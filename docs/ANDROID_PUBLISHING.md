@@ -1,6 +1,6 @@
 # GitHub and Play internal testing
 
-Repository: https://github.com/MrBendel/RevEV (initially private).
+Repository: https://github.com/MrBendel/RevEV (public).
 Android package: `dev.revev.revev`. Keep this identity after registering with Play.
 RevEV is a free app. This workflow targets internal testers only.
 
@@ -65,6 +65,8 @@ on the internal track, subject to Play requirements.
 For an open PR from this repository, a maintainer can comment
 `#deploy-playstore` or `#build-and-deploy`. This builds that exact PR head and
 publishes a completed internal release. Review the PR before triggering it.
+The workflow summary identifies the checked-out source commit and version code,
+so a PR build can be traced to the exact revision included in the bundle.
 Unlike the older Battle Mahjong workflow, PR descriptions do not trigger releases
 and later pushes need a new comment. Fork PRs and callers without write/admin
 access cannot request signed releases.
