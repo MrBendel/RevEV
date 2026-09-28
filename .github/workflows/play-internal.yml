@@ -52,17 +52,26 @@ jobs:
             let status = process.env.RELEASE_STATUS || 'draft';
             if (context.eventName === 'issue_comment') {
               const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: context.issue.number});
-              if (pr.state !== 'open' || pr.head.repo?.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
-                throw new Error('Release comments require an open PR from this repository; forks are not eligible.');
+              if (pr.head.repo?.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+                throw new Error('Release comments require a PR from this repository; forks are not eligible.');
               }
-              ref = pr.head.sha;
+              if (pr.merged) {
+                if (pr.base.ref !== 'main' || !pr.merge_commit_sha) {
+                  throw new Error('Merged PR releases require a merge into main and an available merge commit.');
+                }
+                ref = pr.merge_commit_sha;
+              } else if (pr.state === 'open') {
+                ref = pr.head.sha;
+              } else {
+                throw new Error('Release comments require an open or merged PR; closed unmerged PRs are not eligible.');
+              }
               publish = true;
               status = 'completed';
             } else if (context.ref !== 'refs/heads/main') {
               throw new Error('Run manual releases from main. For a trusted PR, use the release comment.');
             }
             if (publish && process.env.PLAY_READY !== 'true') {
-              throw new Error('Finish first-app Play Console setup, then set PLAY_PUBLISH_ENABLED=true. Build-only runs remain available.');
+              throw new Error('Play publishing is disabled (PLAY_PUBLISH_ENABLED is not true). Verify the first bundle upload and publisher access in Play Console, then enable the repository variable. To build without publishing, run Play internal release on main with publish unchecked.');
             }
             core.setOutput('ref', ref);
             core.setOutput('publish', String(publish));
