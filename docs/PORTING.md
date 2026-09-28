@@ -21,6 +21,7 @@ The app's generic engine definition and identity impulse are locally authored.
 - Fixed `RingBuffer::overwrite` referring to `start` rather than `m_start`.
 - Included `matrix.h` before using the complete Matrix type in sparse templates.
 - Removed a duplicate Windows-backslash include in `connecting_rod.cpp`.
+- Normalized `engine.cpp`'s include separator for Linux CI and macOS.
 - Replaced a stale destructor assertion referring to a nonexistent member.
 - Freed synthesizer transfer buffers, jitter history, connecting-rod journals,
   crankshaft-link constraints and dyno samples during teardown.
