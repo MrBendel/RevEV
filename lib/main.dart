@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'dashboard.dart';
+import 'debug_dashboard.dart';
 
 import 'package:flutter/material.dart';
 import 'package:revev_engine/revev_engine.dart';
@@ -48,7 +49,13 @@ class EngineLab extends StatefulWidget {
 
 class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
   final _engine = RevevEngine();
+  final _debug = DebugSession();
+  final _sessionClock = Stopwatch();
   Timer? _poll;
+  Timer? _testTimer;
+  int _testGeneration = 0;
+  bool _testing = false;
+  String? _testPhase;
   EngineStats _stats = const EngineStats();
   double _throttle = 0, _volume = 0.15;
   bool _busy = false, _polling = false;
@@ -73,14 +80,29 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
       if (mounted && session == _session && !_busy) {
         setState(() {
           _stats = stats;
+          _debug.record(stats, _sessionClock.elapsed);
+          if (!stats.playing) _sessionClock.stop();
           if (!stats.playing) _throttle = 0;
+          if (!stats.playing) {
+            _cancelTest(stats.failed ? 'Failed' : 'Interrupted');
+          }
           if (stats.failed) {
             _error = 'Engine or audio output stopped. Tap Start to try again.';
+            _debug.error = _error;
           }
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _error = 'Unable to read engine status: $e');
+      if (mounted && session == _session && !_busy) {
+        setState(() {
+          _error = 'Unable to read engine status: $e';
+          _debug.error = _error;
+        });
+        if (_testing) {
+          _cancelTest('Failed: diagnostics unavailable');
+          await _toggle();
+        }
+      }
     } finally {
       _polling = false;
     }
@@ -95,7 +117,9 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
     });
     try {
       if (_stats.playing) {
+        _cancelTest('Cancelled');
         await _engine.stop();
+        _finishDebug('Stopped');
         if (mounted) {
           setState(() {
             _stats = const EngineStats();
@@ -103,6 +127,10 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
           });
         }
       } else {
+        _debug.begin();
+        _sessionClock
+          ..reset()
+          ..start();
         _throttle = 0;
         await _engine.controls(0, _volume);
         if (!mounted || session != _session) return;
@@ -111,13 +139,20 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
           await _engine.stop();
           return;
         }
-        if (mounted) setState(() => _stats = const EngineStats(playing: true));
+        if (mounted) {
+          setState(() {
+            _stats = const EngineStats(playing: true);
+            _debug.status = 'Running';
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _stats = const EngineStats();
           _error = 'Could not start the engine: $e';
+          _debug.error = _error;
+          _finishDebug('Failed');
         });
       }
     } finally {
@@ -133,6 +168,69 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _runTest() async {
+    if (_busy || _testing || _stats.playing) return;
+    final generation = ++_testGeneration;
+    setState(() {
+      _testing = true;
+      _testPhase = 'Starting test';
+    });
+    await _toggle();
+    if (!mounted || generation != _testGeneration) return;
+    if (!_stats.playing) {
+      setState(() => _cancelTest('Failed to start'));
+      return;
+    }
+    await _advanceTest(0, generation);
+  }
+
+  Future<void> _advanceTest(int phase, int generation) async {
+    if (!mounted || !_testing || generation != _testGeneration) return;
+    if (phase == 3) {
+      await _refresh();
+      if (!mounted || !_testing || generation != _testGeneration) return;
+      _cancelTest('Completed');
+      await _toggle();
+      return;
+    }
+    const names = ['Initial idle', 'Rev at 35%', 'Return to idle'];
+    final throttle = phase == 1 ? 0.35 : 0.0;
+    try {
+      await _engine.controls(throttle, _volume);
+      if (!mounted || !_testing || generation != _testGeneration) return;
+      setState(() {
+        _throttle = throttle;
+        _testPhase = '${names[phase]} · phase ${phase + 1}/3';
+        _debug.testResult = 'Running';
+        _debug.testPhases.add({
+          'phase': names[phase],
+          'elapsedMs': _sessionClock.elapsedMilliseconds,
+          'throttle': throttle,
+          'volume': _volume,
+        });
+      });
+      _testTimer = Timer(
+        const Duration(seconds: 5),
+        () => unawaited(_advanceTest(phase + 1, generation)),
+      );
+    } catch (e) {
+      if (!mounted || generation != _testGeneration) return;
+      _debug.error = 'Test controls failed: $e';
+      _cancelTest('Failed: controls unavailable');
+      await _toggle();
+    }
+  }
+
+  void _cancelTest(String result) {
+    if (!_testing) return;
+    ++_testGeneration;
+    _testTimer?.cancel();
+    _testTimer = null;
+    _testing = false;
+    _testPhase = null;
+    _debug.testResult = result;
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive ||
@@ -144,6 +242,8 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
 
   Future<void> _pause() async {
     ++_session;
+    _cancelTest('Cancelled on background');
+    _finishDebug('Stopped on background');
     try {
       await _engine.stop();
     } catch (_) {
@@ -157,9 +257,18 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
     }
   }
 
+  void _finishDebug(String status) {
+    _sessionClock.stop();
+    if (_debug.startedAt != null) {
+      _debug.elapsed = _sessionClock.elapsed;
+      _debug.status = status;
+    }
+  }
+
   @override
   void dispose() {
     ++_session;
+    _cancelTest('Cancelled');
     _poll?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_engine.stop().catchError((Object _) {}));
@@ -405,7 +514,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                       value: _throttle,
                       semanticFormatterCallback: (v) =>
                           'Throttle ${(v * 100).round()} percent',
-                      onChanged: _stats.playing && !_busy
+                      onChanged: _stats.playing && !_busy && !_testing
                           ? (v) {
                               setState(() => _throttle = v);
                               _controls();
@@ -453,10 +562,12 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                           value: _volume,
                           semanticFormatterCallback: (v) =>
                               'Volume ${(v * 100).round()} percent',
-                          onChanged: (v) {
-                            setState(() => _volume = v);
-                            _controls();
-                          },
+                          onChanged: _testing
+                              ? null
+                              : (v) {
+                                  setState(() => _volume = v);
+                                  _controls();
+                                },
                         ),
                       ),
                       Text(
@@ -485,23 +596,15 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                     style: TextStyle(fontSize: 11, color: leatherMuted),
                   ),
                   const SizedBox(height: 18),
-                  ExpansionTile(
-                    tilePadding: EdgeInsets.zero,
-                    title: const Text(
-                      'Engine diagnostics',
-                      style: TextStyle(fontSize: 12, color: leatherMuted),
-                    ),
-                    children: [
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                          '${_stats.workMs.toStringAsFixed(1)} ms per 10 ms audio block',
-                        ),
-                        subtitle: Text(
-                          '${_stats.underruns} buffer underruns since start.\nIncludes startup. Speaker latency is not measured.',
-                        ),
-                      ),
-                    ],
+                  DebugDashboard(
+                    session: _debug,
+                    testPhase: _testPhase,
+                    onRunTest: !_stats.playing && !_busy && !_testing
+                        ? () => unawaited(_runTest())
+                        : null,
+                    onCancelTest: _testing && !_busy
+                        ? () => unawaited(_toggle())
+                        : null,
                   ),
                   TextButton(
                     onPressed: () => showLicensePage(

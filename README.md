@@ -41,6 +41,18 @@ the GitHub build button, and internal testing releases.
 - Real combustion, gas-flow and crankshaft simulation with native audio synthesis.
 - Throttle and volume controls, animated RPM/throttle/output instruments.
 - Performance panel: processing time per 10 ms simulated-audio block and underruns.
+- Expand **Debug dashboard** below the controls for live RPM, sampled timing
+  averages/peaks, recent P95, a timing chart and underruns. **Copy debug report**
+  copies a JSON session summary. Results remain after Stop; Start resets them.
+  Timing snapshots are polled every 150 ms, not recorded for every native block;
+  the chart and P95 cover the latest 400 samples (about one minute).
+- With the engine stopped, **Run 15-second test** runs 5 seconds at idle,
+  5 seconds at 35% throttle, and 5 seconds back at idle, then stops. Startup
+  time is additional. Throttle and output volume are locked during the test;
+  set output first. Stop, Cancel test, backgrounding or an engine/diagnostics
+  failure cancels the sequence. The JSON report includes the result and actual
+  phase start times, throttle targets and volume. Timing is scheduled in the
+  foreground UI; it is not a precise native benchmark.
 - Audio-focus loss / app backgrounding stops playback; resuming requires Start.
 - Android AAudio output; an iOS AVAudioEngine adapter shares the same core.
 
