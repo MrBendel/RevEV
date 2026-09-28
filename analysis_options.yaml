@@ -1,0 +1,9 @@
+include: package:flutter_lints/flutter.yaml
+analyzer:
+  exclude:
+    - third_party/**
+    - packages/revev_engine/example/**
+    - packages/revev_engine/test/**
+    - build/**
+    - android/**
+    - ios/**

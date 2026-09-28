@@ -1,0 +1,126 @@
+name: Play internal release
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload to Play internal testing (requires completed Play setup)
+        type: boolean
+        default: false
+      release_status:
+        description: Play release status
+        type: choice
+        options: [draft, completed]
+        default: draft
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+concurrency:
+  group: play-internal
+  cancel-in-progress: false
+jobs:
+  authorize:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.issue.pull_request &&
+       (contains(github.event.comment.body, '#deploy-playstore') || contains(github.event.comment.body, '#build-and-deploy')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      ref: ${{ steps.request.outputs.ref }}
+      publish: ${{ steps.request.outputs.publish }}
+      status: ${{ steps.request.outputs.status }}
+    steps:
+      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        id: request
+        env:
+          PUBLISH: ${{ inputs.publish }}
+          RELEASE_STATUS: ${{ inputs.release_status }}
+          PLAY_READY: ${{ vars.PLAY_PUBLISH_ENABLED }}
+        with:
+          script: |
+            const {data: access} = await github.rest.repos.getCollaboratorPermissionLevel({
+              ...context.repo, username: context.actor
+            });
+            if (!['admin', 'write', 'maintain'].includes(access.permission)) {
+              throw new Error('Only repository maintainers may request signed builds.');
+            }
+            let ref = context.sha;
+            let publish = process.env.PUBLISH === 'true';
+            let status = process.env.RELEASE_STATUS || 'draft';
+            if (context.eventName === 'issue_comment') {
+              const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: context.issue.number});
+              if (pr.state !== 'open' || pr.head.repo?.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+                throw new Error('Release comments require an open PR from this repository; forks are not eligible.');
+              }
+              ref = pr.head.sha;
+              publish = true;
+              status = 'completed';
+            } else if (context.ref !== 'refs/heads/main') {
+              throw new Error('Run manual releases from main. For a trusted PR, use the release comment.');
+            }
+            if (publish && process.env.PLAY_READY !== 'true') {
+              throw new Error('Finish first-app Play Console setup, then set PLAY_PUBLISH_ENABLED=true. Build-only runs remain available.');
+            }
+            core.setOutput('ref', ref);
+            core.setOutput('publish', String(publish));
+            core.setOutput('status', status);
+  release:
+    needs: authorize
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: play-internal
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.authorize.outputs.ref }}
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.1.13356709' 'cmake;3.10.2.4988404'
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - name: Configure upload signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+        run: python3 scripts/setup_signing.py --ci
+      - name: Build signed bundle
+        id: bundle
+        shell: bash
+        run: |
+          code=$(($(date +%s) - 1577836800))
+          flutter build appbundle --release --build-number="$code"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Built commit $GITHUB_SHA with version code $code" >> "$GITHUB_STEP_SUMMARY"
+          jarsigner -verify build/app/outputs/bundle/release/app-release.aab
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: revev-play-${{ steps.bundle.outputs.code }}
+          path: build/app/outputs/bundle/release/app-release.aab
+          retention-days: 14
+      - name: Upload internal release
+        if: needs.authorize.outputs.publish == 'true'
+        uses: r0adkll/upload-google-play@eb49699984a39f23558439581660aa6f088acfd6 # v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_JSON_KEY }}
+          packageName: dev.revev.revev
+          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          track: internal
+          status: ${{ needs.authorize.outputs.status }}
+          releaseName: RevEV internal ${{ steps.bundle.outputs.code }}
