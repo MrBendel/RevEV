@@ -62,9 +62,15 @@ Run **Play internal release** on `main`, check **publish**, and choose `draft` o
 `completed`. `draft` prepares a release in Play; `completed` makes it available
 on the internal track, subject to Play requirements.
 
-For an open PR from this repository, a maintainer can comment
-`#deploy-playstore` or `#build-and-deploy`. This builds that exact PR head and
-publishes a completed internal release. Review the PR before triggering it.
+For an open PR from this repository, a maintainer can comment:
+
+```text
+#build-and-deploy
+```
+
+This is the standard command, matching Battle Mahjong. It builds that exact PR
+head and publishes a completed internal release. Review the PR before triggering
+it. `#deploy-playstore` remains supported as a compatibility alias.
 The workflow summary identifies the checked-out source commit and version code,
 so a PR build can be traced to the exact revision included in the bundle.
 Unlike the older Battle Mahjong workflow, PR descriptions do not trigger releases
