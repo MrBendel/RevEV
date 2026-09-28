@@ -23,7 +23,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.issue.pull_request &&
-       (contains(github.event.comment.body, '#deploy-playstore') || contains(github.event.comment.body, '#build-and-deploy')))
+       (contains(github.event.comment.body, '#build-and-deploy') || contains(github.event.comment.body, '#deploy-playstore')))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -107,7 +107,8 @@ jobs:
           code=$(($(date +%s) - 1577836800))
           flutter build appbundle --release --build-number="$code"
           echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "Built commit $GITHUB_SHA with version code $code" >> "$GITHUB_STEP_SUMMARY"
+          source_commit=$(git rev-parse HEAD)
+          echo "Built commit $source_commit with version code $code" >> "$GITHUB_STEP_SUMMARY"
           jarsigner -verify build/app/outputs/bundle/release/app-release.aab
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
