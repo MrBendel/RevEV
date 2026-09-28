@@ -1,7 +1,7 @@
 # GitHub and Play internal testing
 
 Repository: https://github.com/MrBendel/RevEV (public).
-Android package: `dev.revev.revev`. Keep this identity after registering with Play.
+Android package: `com.platypus.revev`. Keep this identity after registering with Play.
 RevEV is a free app. This workflow targets internal testers only.
 
 ## Build a signed bundle
@@ -46,7 +46,7 @@ in Play Console → Users and permissions. Google Cloud IAM alone is insufficien
 ## One-time Play setup
 
 1. In the existing Andrew Poes developer account, create **RevEV**, package
-   `dev.revev.revev`, English (US), **App**, **Free**. Complete the account owner's
+   `com.platypus.revev`, English (US), **App**, **Free**. Complete the account owner's
    policy/export declarations.
 2. Open **Testing → Internal testing**, create a release, enable Play App Signing
    and upload the first signed AAB manually. Save/review any required setup.
