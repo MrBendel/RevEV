@@ -24,7 +24,7 @@ def main():
         subprocess.run([args.flutter, *command], cwd=ROOT, check=True)
     bundle = ROOT / 'build/app/outputs/bundle/release/app-release.aab'
     (ROOT / 'build/release.json').write_text(json.dumps({'versionCode': code, 'bundle': str(bundle),
-                                                      'packageName': 'dev.revev.revev'}, indent=2))
+                                                      'packageName': 'com.platypus.revev'}, indent=2))
     print(f'Signed bundle ready: {bundle} (version code {code}). No upload performed.')
 
 if __name__ == '__main__':
