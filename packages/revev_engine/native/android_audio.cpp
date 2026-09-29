@@ -20,7 +20,7 @@ void stop() {
 }
 }
 extern "C" JNIEXPORT jint JNICALL
-Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeStart(JNIEnv*, jobject) {
+Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeStart(JNIEnv *env, jobject, jstring root, jstring preset) {
     stop(); disconnected = false;
     AAudioStreamBuilder *builder = nullptr;
     auto result = AAudio_createStreamBuilder(&builder);
@@ -40,7 +40,13 @@ Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeStart(JNIEnv*, jobject) {
         AAudioStream_getFormat(stream) != AAUDIO_FORMAT_PCM_FLOAT ||
         AAudioStream_getChannelCount(stream) != 1) { stop(); return AAUDIO_ERROR_INVALID_FORMAT; }
     AAudioStream_setBufferSizeInFrames(stream, 2 * AAudioStream_getFramesPerBurst(stream));
-    engine.start();
+    const char *rootText = env->GetStringUTFChars(root, nullptr);
+    const char *presetText = env->GetStringUTFChars(preset, nullptr);
+    std::string rootPath(rootText), presetId(presetText);
+    env->ReleaseStringUTFChars(root, rootText);
+    env->ReleaseStringUTFChars(preset, presetText);
+    try { engine.start(rootPath, presetId); }
+    catch (...) { stop(); return AAUDIO_ERROR_ILLEGAL_ARGUMENT; }
     result = AAudioStream_requestStart(stream);
     if (result != AAUDIO_OK) stop();
     return result;
@@ -48,14 +54,17 @@ Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeStart(JNIEnv*, jobject) {
 extern "C" JNIEXPORT void JNICALL
 Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeStop(JNIEnv*, jobject) { stop(); }
 extern "C" JNIEXPORT void JNICALL
+Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeShutdown(JNIEnv*, jobject) { engine.shutdown(); }
+extern "C" JNIEXPORT void JNICALL
 Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeControls(JNIEnv*, jobject, jfloat throttle, jfloat volume) {
     engine.setThrottle(throttle); engine.setVolume(volume);
 }
 extern "C" JNIEXPORT jdoubleArray JNICALL
 Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeStats(JNIEnv *env, jobject) {
     const double stats[] = {engine.rpm(), engine.workMs(), static_cast<double>(engine.underruns()),
-        static_cast<double>(engine.failed() || disconnected.load())};
-    auto out = env->NewDoubleArray(4);
-    env->SetDoubleArrayRegion(out, 0, 4, stats);
+        static_cast<double>(engine.failed() || disconnected.load()),
+        static_cast<double>(engine.finished()), static_cast<double>(engine.stopping())};
+    auto out = env->NewDoubleArray(6);
+    env->SetDoubleArrayRegion(out, 0, 6, stats);
     return out;
 }

@@ -4,7 +4,7 @@ An Android-first, cross-platform sound experiment. The app runs Ange Yaghi's
 original MIT-licensed **engine-sim combustion simulation**, not a recording or a
 stand-in oscillator. The interface uses original vector gauges and procedural
 leather grain inspired by the supplied dashboard references; no reference photos
-or third-party sound recordings are shipped.
+are shipped. Upstream exhaust impulse responses shape the simulated sound.
 
 ## Try it
 
@@ -37,7 +37,13 @@ the GitHub build button, and internal testing releases.
 
 ## What works in this prototype
 
-- One original generic 2.0 L inline-four preset, starter, ignition and rev limiter.
+- An engine dropdown with the generic 2.0 L inline-four and 25 complete upstream
+  engine definitions, including VTEC, Hayabusa, Subaru, Audi, V6/V8/V10/V12 and radials.
+  Stop before switching. Templates compile on the native worker; first startup
+  also unpacks the bundled library on Android.
+- Starter, ignition and rev limiter. Stop cuts ignition and lets the simulated
+  crankshaft coast down, followed by a short fade. A bounded timeout handles
+  engines that do not settle promptly. Backgrounding still stops immediately.
 - Real combustion, gas-flow and crankshaft simulation with native audio synthesis.
 - Throttle and volume controls, animated RPM/throttle/output instruments.
 - Performance panel: processing time per 10 ms simulated-audio block and underruns.
@@ -48,7 +54,7 @@ the GitHub build button, and internal testing releases.
   the chart and P95 cover the latest 400 samples (about one minute).
 - With the engine stopped, **Run 15-second test** runs 5 seconds at idle,
   5 seconds at 35% throttle, and 5 seconds back at idle, then stops. Startup
-  time is additional. Throttle and output volume are locked during the test;
+  time and final coast-down are additional. Throttle and output volume are locked during the test;
   set output first. Stop, Cancel test, backgrounding or an engine/diagnostics
   failure cancels the sequence. The JSON report includes the result and actual
   phase start times, throttle targets and volume. Timing is scheduled in the
@@ -57,8 +63,11 @@ the GitHub build button, and internal testing releases.
 - Android AAudio output; an iOS AVAudioEngine adapter shares the same core.
 
 The first engine is a tuning/test preset, not a sonic recreation of a particular
-car. Its exhaust is currently uncolored (identity impulse response); sound design
-is still needed. CPU performance on the emulator is not a phone benchmark.
+car. Its exhaust now uses upstream's mild exhaust impulse response, with lower
+noise and jitter. Bundled engines use their own scripted exhaust responses and
+simulation frequencies. High-frequency or many-cylinder definitions can exceed
+a device's processing budget and produce underruns; check the debug dashboard.
+CPU performance on the emulator is not a phone benchmark.
 The reported block time is simulation work, not CPU percentage or speaker latency.
 The audio rate is fixed at 44.1 kHz; Android may need sample-rate conversion.
 
@@ -66,7 +75,8 @@ The audio rate is fixed at 44.1 kHz; Android may need sample-rate conversion.
 
 `lib/` contains the Flutter dashboard. `packages/revev_engine/` is a local plugin:
 
-- Method channel: start, stop, control targets, diagnostic snapshots only.
+- Method channel: start with preset ID, ignition shutdown, immediate stop,
+  control targets and diagnostic snapshots.
 - `native/engine_preset.cpp`: explicit engine geometry and fuel/valve parameters.
 - `native/engine_runtime.cpp`: a native worker advances physics in 10 ms blocks,
   renders upstream audio synchronously, and fills an SPSC queue (about 30–40 ms).
@@ -74,8 +84,10 @@ The audio rate is fixed at 44.1 kHz; Android may need sample-rate conversion.
   file I/O, or Dart calls. The simulation's internal locks stay on its worker.
 - Android uses JNI + AAudio; iOS uses Objective-C++ + AVAudioSourceNode.
 
-No scripting compiler, desktop graphics engine, purchased samples, backend,
-account system, or runtime downloads are needed. Flutter assets contain the
+The bundled Piranha compiler loads only allowlisted upstream scripts; no desktop
+graphics engine, backend, account system, or runtime downloads are needed.
+See [bundled engine library](docs/ENGINE_LIBRARY.md) for provenance and generation.
+Flutter assets contain the
 upstream license notices, accessible through **Open-source credits**.
 
 ## iOS

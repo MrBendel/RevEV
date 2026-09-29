@@ -1,5 +1,34 @@
 # Prototype validation — 2026-09-27
 
+## Engine library update — 2026-09-29
+
+- Static analysis: no issues; 14 Flutter tests pass, including preset forwarding,
+  tachometer range, coast-down state and disabled controls during shutdown.
+- Android x86_64 debug APK builds with the bundled scripts and exhaust responses.
+- Android integration passes: start, idle, rev, ignition-off coast-down and
+  switching from generic to Harley. Captured idle 1,650 RPM and rev 5,918 RPM;
+  the sampled block took 10.34 ms, with 276 underruns on the emulator.
+- Every bundled definition (25 upstream plus generic) compiles and its referenced
+  impulse responses decode on the Android emulator.
+- All 26 definitions pass native idle/rev, finite/bounded nonzero PCM, and
+  ignition-off completion checks. The two aircraft engines were rerun after
+  extending closed-throttle cranking; V10/V12 tests were rerun after removing
+  upstream's unused eight-cylinder scratch buffer.
+- Generic coast-down from approximately 5,900 RPM completes in about three
+  seconds. Heavy engines can use the eight-second safety timeout plus fade.
+- Some presets exceed the 10 ms block budget on the emulator. These checks
+  establish functionality, not smooth playback or subjective sound quality on
+  a physical phone. The new sound still needs comparison on the user's device.
+- iOS remains unbuilt on this Windows host.
+
+Latest native logs: `build/all-preset-runtime-v4.log` and
+`build/final-large-engine-runtime.log` (the latter supersedes the aircraft and
+V10/V12 entries in the first). APK build logs: `build/presets-apk-build.log`.
+Integration log: `build/presets-integration-retry.log`; the first attempt was
+interrupted by the emulator briefly going offline before the test ran.
+
+## Original prototype
+
 Environment: Windows host, Flutter 3.47.5, Android API 35 x86_64 emulator
 (`RevEV_Test`). No physical handset was attached. iOS has not been built.
 

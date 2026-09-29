@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <thread>
+#include <string>
 
 // Single producer (simulation worker), single consumer (audio callback).
 // Lifecycle operations must be serialized by the platform adapter.
@@ -11,7 +12,10 @@ public:
     static constexpr int sampleRate = 44100;
     static constexpr uint32_t capacity = 8192;
     ~EngineRuntime() { stop(); }
-    void start();
+    void start(const std::string &root = "", const std::string &preset = "generic");
+    void shutdown() { stopping_ = true; throttle_ = 0; }
+    bool stopping() const { return stopping_.load(); }
+    bool finished() const { return done_.load() && read_.load() == write_.load(); }
     void stop();
     void setThrottle(float value);
     void setVolume(float value);
@@ -26,6 +30,8 @@ private:
     std::atomic<uint32_t> read_{0}, write_{0}, underruns_{0};
     std::atomic<float> throttle_{0}, volume_{0.15f}, rpm_{0}, workMs_{0};
     std::atomic<bool> running_{false}, failed_{false};
+    std::atomic<bool> stopping_{false}, done_{false};
+    std::string assetRoot_, presetEntry_;
     float gain_ = 0; // audio-consumer owned; reset only while callback stopped
     std::thread worker_;
 };

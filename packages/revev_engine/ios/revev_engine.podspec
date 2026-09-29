@@ -7,11 +7,15 @@ Pod::Spec.new do |s|
   s.license = { :type => 'MIT (upstream components)', :file => '../THIRD_PARTY_NOTICES.txt' }
   s.author = 'RevEV'
   s.source = { :path => '.' }
-  s.source_files = 'Classes/**/*.{h,mm}', '../native/engine_{preset,runtime}.{h,cpp}',
+  s.source_files = 'Classes/**/*.{h,mm}', '../native/*.{h,cpp}',
     '../native/portable.h', '../native/vendor/engine-sim/include/*.h',
     '../native/vendor/engine-sim/src/*.cpp',
+    '../native/vendor/engine-sim/scripting/{include,src}/*.{h,cpp}',
+    '../native/vendor/piranha/{include,src,generated}/*.{h,hh,cpp}',
     '../native/vendor/engine-sim/dependencies/submodules/simple-2d-constraint-solver/{include,src}/*.{h,cpp}'
   s.public_header_files = 'Classes/RevevEnginePlugin.h'
+  s.exclude_files = '../native/smoke.cpp', '../native/android_audio.cpp', '../native/preset_smoke.cpp'
+  s.resources = '../assets/engine-sim'
   s.preserve_paths = '../native/**/*'
   s.dependency 'Flutter'
   s.platform = :ios, '15.0'
@@ -20,7 +24,7 @@ Pod::Spec.new do |s|
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
-    'HEADER_SEARCH_PATHS' => '$(inherited) "${PODS_TARGET_SRCROOT}/../native/vendor/engine-sim/include"',
+    'HEADER_SEARCH_PATHS' => '$(inherited) "${PODS_TARGET_SRCROOT}/../native/vendor/engine-sim/include" "${PODS_TARGET_SRCROOT}/../native/vendor" "${PODS_TARGET_SRCROOT}/../native/vendor/piranha/include" "${PODS_TARGET_SRCROOT}/../native/vendor/piranha/generated"',
     'OTHER_CPLUSPLUSFLAGS' => '$(inherited) -O2 -include "${PODS_TARGET_SRCROOT}/../native/portable.h"'
   }
 end

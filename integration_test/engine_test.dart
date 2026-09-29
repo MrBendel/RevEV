@@ -50,8 +50,19 @@ void main() {
       'underruns': rev.underruns,
     });
     await tester.tap(find.byKey(const Key('start')));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    expect((await engine.stats()).stopping, isTrue);
+    for (var i = 0; i < 120 && (await engine.stats()).playing; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await tester.pump();
+    }
     expect((await engine.stats()).playing, isFalse);
+    await tester.pump(const Duration(milliseconds: 200));
+    final selector = tester.widget<DropdownButtonFormField<String>>(
+      find.byKey(const Key('engine-preset')),
+    );
+    selector.onChanged!('atg-video-1/03_harley_davidson_shovelhead');
+    await tester.pump();
     await tester.tap(find.byKey(const Key('start')));
     await tester.pump();
     await Future<void>.delayed(const Duration(seconds: 5));

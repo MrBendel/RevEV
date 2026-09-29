@@ -90,8 +90,9 @@ class InstrumentCluster extends StatelessWidget {
     required this.throttle,
     required this.volume,
     required this.running,
+    this.maxRpm = 8000,
   });
-  final double rpm, throttle, volume;
+  final double rpm, throttle, volume, maxRpm;
   final bool running;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -141,8 +142,10 @@ class InstrumentCluster extends StatelessWidget {
               height: main,
               child: AnalogGauge(
                 value: rpm / 1000,
-                max: 8,
-                divisions: 8,
+                max: maxRpm / 1000,
+                divisions: maxRpm > 10000
+                    ? (maxRpm / 2000).round()
+                    : (maxRpm / 1000).round(),
                 label: 'RevEV',
                 unit: '1/min × 1000',
                 readout: running ? rpm.round().toString() : 'READY',
