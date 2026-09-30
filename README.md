@@ -37,8 +37,9 @@ the GitHub build button, and internal testing releases.
 
 ## What works in this prototype
 
-- An engine dropdown with the generic 2.0 L inline-four and 25 complete upstream
-  engine definitions, including VTEC, Hayabusa, Subaru, Audi, V6/V8/V10/V12 and radials.
+- An engine dropdown with the generic 2.0 L inline-four, 16 upstream car
+  engine definitions, and a custom Porsche 911 Carrera 3.2 flat-six approximation.
+  Motorcycle, ATV, industrial, aircraft and truck presets are excluded.
   Stop before switching. Templates compile on the native worker; first startup
   also unpacks the bundled library on Android.
 - Starter, ignition and rev limiter. Stop cuts ignition and lets the simulated

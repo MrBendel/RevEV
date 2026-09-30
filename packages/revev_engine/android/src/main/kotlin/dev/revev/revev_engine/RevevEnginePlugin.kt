@@ -30,7 +30,7 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     }
     private fun prepareEngines(): String {
         // Version this directory when bundled definitions change. Never load user scripts.
-        val root = File(context.filesDir, "engine-library-v1")
+        val root = File(context.filesDir, "engine-library-v2")
         if (!File(root, ".ready").exists()) {
             fun copy(asset: String, target: File) {
                 val children = context.assets.list(asset) ?: emptyArray()

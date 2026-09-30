@@ -41,19 +41,19 @@ void main() {
             .widget<DropdownButton<String>>(find.byType(DropdownButton<String>))
             .items!
             .length,
-        26,
+        18,
       );
-      selector().onChanged!('atg-video-1/04_hayabusa');
+      selector().onChanged!('porsche/911_carrera_32');
       await tester.pump();
       expect(
         tester.widget<InstrumentCluster>(find.byType(InstrumentCluster)).maxRpm,
-        14000,
+        8000,
       );
       await tester.tap(find.byKey(const Key('start')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 150));
       expect(calls.singleWhere((c) => c.method == 'start').arguments, {
-        'preset': 'atg-video-1/04_hayabusa',
+        'preset': 'porsche/911_carrera_32',
       });
       expect(selector().onChanged, isNull);
       final mixSelector = tester.widget<DropdownButtonFormField<ListeningMode>>(

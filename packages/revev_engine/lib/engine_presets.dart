@@ -7,18 +7,11 @@ class EnginePresetInfo {
 
 const enginePresets = <EnginePresetInfo>[
   EnginePresetInfo("generic", "RevEV \u00b7 Generic 2.0 L I4", 8000),
-  EnginePresetInfo("atg-video-1/01_honda_trx520", "Honda TRX520 (ATV)", 8000),
   EnginePresetInfo(
-    "atg-video-1/02_kohler_ch750",
-    "Kohler CH750 (video 1)",
+    "porsche/911_carrera_32",
+    "Porsche 911 Carrera 3.2 (approx.)",
     8000,
   ),
-  EnginePresetInfo(
-    "atg-video-1/03_harley_davidson_shovelhead",
-    "Harley Davidson Shovelhead",
-    8000,
-  ),
-  EnginePresetInfo("atg-video-1/04_hayabusa", "Suzuki Hayabusa I4", 14000),
   EnginePresetInfo(
     "atg-video-1/05_honda_vtec",
     "Honda B18C5 [VTEC, I4]",
@@ -26,7 +19,6 @@ const enginePresets = <EnginePresetInfo>[
   ),
   EnginePresetInfo("atg-video-1/06_subaru_ej25", "Subaru EJ25 (video 1)", 8000),
   EnginePresetInfo("atg-video-1/07_audi_i5", "Audi 2.3 I5 (video 1)", 8000),
-  EnginePresetInfo("atg-video-1/08_radial_5", "Radial 5", 8000),
   EnginePresetInfo(
     "atg-video-2/01_subaru_ej25_eh",
     "Subaru EJ25 \u00b7 Equal headers",
@@ -51,13 +43,7 @@ const enginePresets = <EnginePresetInfo>[
   ),
   EnginePresetInfo("atg-video-2/07_gm_ls", "GM LS", 8000),
   EnginePresetInfo("atg-video-2/08_ferrari_f136_v8", "Ferrari F136", 12000),
-  EnginePresetInfo("atg-video-2/09_radial_9", "Radial 9", 8000),
   EnginePresetInfo("atg-video-2/10_lfa_v10", "1LR-GUE [V10]", 12000),
-  EnginePresetInfo(
-    "atg-video-2/11_merlin_v12",
-    "Merlin V-1650-9 [V12] (NA)",
-    8000,
-  ),
   EnginePresetInfo(
     "atg-video-2/12_ferrari_412_t2",
     "Ferrari 412 T2 [V12]",
@@ -65,7 +51,5 @@ const enginePresets = <EnginePresetInfo>[
   ),
   EnginePresetInfo("audi/i5", "Audi 2.3 I5 (original)", 10000),
   EnginePresetInfo("bmw/M52B28", "BMW M52B28", 10000),
-  EnginePresetInfo("chevrolet/chev_truck_454", "Chevrolet 454 (truck)", 8000),
   EnginePresetInfo("chevrolet/engine_03_for_e1", "Chevrolet 454 (E1)", 8000),
-  EnginePresetInfo("kohler/kohler_ch750", "Kohler CH750 (original)", 8000),
 ];
