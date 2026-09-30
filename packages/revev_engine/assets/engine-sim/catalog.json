@@ -6,28 +6,10 @@
     "maxRpm": 8000
   },
   {
-    "id": "atg-video-1/01_honda_trx520",
-    "name": "Honda TRX520 (ATV)",
-    "entry": "entries/atg-video-1/01_honda_trx520.mr",
+    "id": "porsche/911_carrera_32",
+    "name": "Porsche 911 Carrera 3.2 (approx.)",
+    "entry": "entries/porsche/911_carrera_32.mr",
     "maxRpm": 8000
-  },
-  {
-    "id": "atg-video-1/02_kohler_ch750",
-    "name": "Kohler CH750 (video 1)",
-    "entry": "entries/atg-video-1/02_kohler_ch750.mr",
-    "maxRpm": 8000
-  },
-  {
-    "id": "atg-video-1/03_harley_davidson_shovelhead",
-    "name": "Harley Davidson Shovelhead",
-    "entry": "entries/atg-video-1/03_harley_davidson_shovelhead.mr",
-    "maxRpm": 8000
-  },
-  {
-    "id": "atg-video-1/04_hayabusa",
-    "name": "Suzuki Hayabusa I4",
-    "entry": "entries/atg-video-1/04_hayabusa.mr",
-    "maxRpm": 14000
   },
   {
     "id": "atg-video-1/05_honda_vtec",
@@ -45,12 +27,6 @@
     "id": "atg-video-1/07_audi_i5",
     "name": "Audi 2.3 I5 (video 1)",
     "entry": "entries/atg-video-1/07_audi_i5.mr",
-    "maxRpm": 8000
-  },
-  {
-    "id": "atg-video-1/08_radial_5",
-    "name": "Radial 5",
-    "entry": "entries/atg-video-1/08_radial_5.mr",
     "maxRpm": 8000
   },
   {
@@ -102,22 +78,10 @@
     "maxRpm": 12000
   },
   {
-    "id": "atg-video-2/09_radial_9",
-    "name": "Radial 9",
-    "entry": "entries/atg-video-2/09_radial_9.mr",
-    "maxRpm": 8000
-  },
-  {
     "id": "atg-video-2/10_lfa_v10",
     "name": "1LR-GUE [V10]",
     "entry": "entries/atg-video-2/10_lfa_v10.mr",
     "maxRpm": 12000
-  },
-  {
-    "id": "atg-video-2/11_merlin_v12",
-    "name": "Merlin V-1650-9 [V12] (NA)",
-    "entry": "entries/atg-video-2/11_merlin_v12.mr",
-    "maxRpm": 8000
   },
   {
     "id": "atg-video-2/12_ferrari_412_t2",
@@ -138,21 +102,9 @@
     "maxRpm": 10000
   },
   {
-    "id": "chevrolet/chev_truck_454",
-    "name": "Chevrolet 454 (truck)",
-    "entry": "entries/chevrolet/chev_truck_454.mr",
-    "maxRpm": 8000
-  },
-  {
     "id": "chevrolet/engine_03_for_e1",
     "name": "Chevrolet 454 (E1)",
     "entry": "entries/chevrolet/engine_03_for_e1.mr",
-    "maxRpm": 8000
-  },
-  {
-    "id": "kohler/kohler_ch750",
-    "name": "Kohler CH750 (original)",
-    "entry": "entries/kohler/kohler_ch750.mr",
     "maxRpm": 8000
   }
 ]

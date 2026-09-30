@@ -1,5 +1,23 @@
 # Prototype validation — 2026-09-27
 
+## Car presets and 911 � 2026-09-30
+
+- Dropdown/native allowlist now contains 18 car presets: generic, 16 upstream
+  car definitions, and a custom 911 Carrera 3.2 approximation. Excludes ATV,
+  motorcycle, industrial, aircraft, and the truck-specific 454 definition.
+- The 911 adapts the MIT-licensed upstream EJ25 scaffolding to six opposed
+  cylinders, six journals, and evenly spaced 1-6-2-4-3-5 firing. Bore/stroke are
+  95 x 74.4 mm; flow, cam, inertia and exhaust parameters are estimates. This is
+  not a measured or factory-validated Porsche sound model.
+- Dimensional reference: https://newsroom.porsche.com/de_CH/2019/historie/porsche-klassik-911-carrera-unternehmen-auto-assistent-porsche-ceoexclusive-label-tilman-brodbeck-16210.html
+- Android extracted asset directory advances to v2 so existing installations
+  receive the new script after updating.
+- Flutter: 14 tests passed; analyze clean. Android x86_64 native script compile
+  confirms six cylinders. Runtime smoke: idle 607 rpm, peak 6543 rpm, nonzero
+  finite/bounded PCM, and shutdown 6437 to 48 rpm with completion in 555 blocks.
+- Emulator work was ~23 ms per 10 ms block, with underruns: functionality passes,
+  but real-time smoothness and subjective sound still need physical-device testing.
+
 ## Cabin/rumble experiment — 2026-09-29
 
 - Static analysis clean; 14 Flutter tests pass, including forwarding mode and

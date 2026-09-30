@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'dashboard.dart';
 import 'debug_dashboard.dart';
+import 'mounting_position.dart';
 
 import 'package:flutter/material.dart';
 import 'package:revev_engine/revev_engine.dart';
@@ -58,6 +59,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
   String? _testPhase;
   EngineStats _stats = const EngineStats();
   String _preset = 'generic';
+  MountingPosition _mountingPosition = MountingPosition.trayTopForward;
   ListeningMode _listeningMode = ListeningMode.original;
   double _rumbleStrength = 0.5;
   bool _mixBusy = false;
@@ -149,6 +151,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
       } else {
         _debug.begin();
         _debug.preset = _preset;
+        _debug.mountingPosition = _mountingPosition.name;
         _sessionClock
           ..reset()
           ..start();
@@ -770,6 +773,50 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                     onCancelTest: _testing && !_busy
                         ? () => unawaited(_toggle())
                         : null,
+                  ),
+                  ExpansionTile(
+                    key: const Key('mounting-settings'),
+                    tilePadding: EdgeInsets.zero,
+                    title: const Text('Phone mounting'),
+                    subtitle: Text(_mountingPosition.label),
+                    children: [
+                      DropdownButtonFormField<MountingPosition>(
+                        key: const Key('mounting-position'),
+                        initialValue: _mountingPosition,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Mounting position',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: [
+                          for (final position in MountingPosition.values)
+                            DropdownMenuItem(
+                              value: position,
+                              child: Text(
+                                position.label,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                        onChanged: _stats.playing || _busy || _testing
+                            ? null
+                            : (value) {
+                                if (value != null) {
+                                  setState(() => _mountingPosition = value);
+                                }
+                              },
+                      ),
+                      const SizedBox(height: 8),
+                      Text(_mountingPosition.description),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Recorded in your test report for this app session. '
+                        'Motion control and calibration are not active yet. '
+                        'Choose a position before starting the engine.',
+                        style: TextStyle(fontSize: 11, color: leatherMuted),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                   ),
                   TextButton(
                     onPressed: () => showLicensePage(

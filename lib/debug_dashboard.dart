@@ -13,6 +13,7 @@ class DebugSession {
   String status = 'No session';
   String? error;
   String preset = 'generic';
+  String mountingPosition = 'trayTopForward';
   final List<Map<String, Object>> listeningChanges = [];
   String testResult = 'Manual session';
   final List<Map<String, Object>> testPhases = [];
@@ -63,6 +64,8 @@ class DebugSession {
   String report() => const JsonEncoder.withIndent('  ').convert({
     'app': 'RevEV',
     'enginePreset': preset,
+    'mountingPosition': mountingPosition,
+    'motionControlEnabled': false,
     'listeningChanges': listeningChanges,
     'platform': defaultTargetPlatform.name,
     'buildMode': kReleaseMode

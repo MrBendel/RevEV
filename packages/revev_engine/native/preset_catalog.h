@@ -5,14 +5,10 @@
 struct PresetEntry { const char *id; const char *name; const char *entry; };
 inline constexpr PresetEntry enginePresets[] = {
     {"generic", "RevEV \u00b7 Generic 2.0 L I4", ""},
-    {"atg-video-1/01_honda_trx520", "Honda TRX520 (ATV)", "entries/atg-video-1/01_honda_trx520.mr"},
-    {"atg-video-1/02_kohler_ch750", "Kohler CH750 (video 1)", "entries/atg-video-1/02_kohler_ch750.mr"},
-    {"atg-video-1/03_harley_davidson_shovelhead", "Harley Davidson Shovelhead", "entries/atg-video-1/03_harley_davidson_shovelhead.mr"},
-    {"atg-video-1/04_hayabusa", "Suzuki Hayabusa I4", "entries/atg-video-1/04_hayabusa.mr"},
+    {"porsche/911_carrera_32", "Porsche 911 Carrera 3.2 (approx.)", "entries/porsche/911_carrera_32.mr"},
     {"atg-video-1/05_honda_vtec", "Honda B18C5 [VTEC, I4]", "entries/atg-video-1/05_honda_vtec.mr"},
     {"atg-video-1/06_subaru_ej25", "Subaru EJ25 (video 1)", "entries/atg-video-1/06_subaru_ej25.mr"},
     {"atg-video-1/07_audi_i5", "Audi 2.3 I5 (video 1)", "entries/atg-video-1/07_audi_i5.mr"},
-    {"atg-video-1/08_radial_5", "Radial 5", "entries/atg-video-1/08_radial_5.mr"},
     {"atg-video-2/01_subaru_ej25_eh", "Subaru EJ25 \u00b7 Equal headers", "entries/atg-video-2/01_subaru_ej25_eh.mr"},
     {"atg-video-2/02_subaru_ej25_uh", "Subaru EJ25 \u00b7 Unequal headers", "entries/atg-video-2/02_subaru_ej25_uh.mr"},
     {"atg-video-2/03_2jz", "2JZ [I6]", "entries/atg-video-2/03_2jz.mr"},
@@ -21,15 +17,11 @@ inline constexpr PresetEntry enginePresets[] = {
     {"atg-video-2/06_even_fire_v6", "Generic Even-fire V6 (Split Rod Jnl.)", "entries/atg-video-2/06_even_fire_v6.mr"},
     {"atg-video-2/07_gm_ls", "GM LS", "entries/atg-video-2/07_gm_ls.mr"},
     {"atg-video-2/08_ferrari_f136_v8", "Ferrari F136", "entries/atg-video-2/08_ferrari_f136_v8.mr"},
-    {"atg-video-2/09_radial_9", "Radial 9", "entries/atg-video-2/09_radial_9.mr"},
     {"atg-video-2/10_lfa_v10", "1LR-GUE [V10]", "entries/atg-video-2/10_lfa_v10.mr"},
-    {"atg-video-2/11_merlin_v12", "Merlin V-1650-9 [V12] (NA)", "entries/atg-video-2/11_merlin_v12.mr"},
     {"atg-video-2/12_ferrari_412_t2", "Ferrari 412 T2 [V12]", "entries/atg-video-2/12_ferrari_412_t2.mr"},
     {"audi/i5", "Audi 2.3 I5 (original)", "entries/audi/i5.mr"},
     {"bmw/M52B28", "BMW M52B28", "entries/bmw/M52B28.mr"},
-    {"chevrolet/chev_truck_454", "Chevrolet 454 (truck)", "entries/chevrolet/chev_truck_454.mr"},
     {"chevrolet/engine_03_for_e1", "Chevrolet 454 (E1)", "entries/chevrolet/engine_03_for_e1.mr"},
-    {"kohler/kohler_ch750", "Kohler CH750 (original)", "entries/kohler/kohler_ch750.mr"},
 };
 inline std::string presetEntry(const std::string &id) {
     for (const auto &preset : enginePresets) if (id == preset.id) return preset.entry;
