@@ -133,6 +133,17 @@ RPM response and restart, not only mocked method calls. `native/smoke.cpp` can
 also be cross-compiled with the Android NDK and run through adb. It checks finite
 bounded PCM, nonzero audio energy, idle, throttle response, and repeated teardown.
 
+## Mounting-position test setup
+
+Expand **Phone mounting** below the debug dashboard to choose one of seven
+physical positions: screen-up tray with the top toward the dashboard, seats,
+left door or right door; or screen-toward-seats upright portrait and either
+landscape orientation. Left/right are viewed from a seat facing forward.
+The default is tray/top toward dashboard. The choice lasts for the app session,
+is locked while the engine runs, and is captured in each session's debug report.
+It documents test setup only: it does not yet calibrate sensors, change the
+sound, or enable motion control or Android Auto.
+
 ## Next milestones
 
 1. Measure sustained performance, battery use and audio-route delay on a phone.
