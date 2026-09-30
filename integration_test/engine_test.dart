@@ -27,6 +27,26 @@ void main() {
     expect(idle.playing, isTrue);
     expect(idle.failed, isFalse);
     expect(idle.rpm, greaterThan(500));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('listening-mode')),
+      250,
+    );
+    for (final mode in [ListeningMode.cabin, ListeningMode.cabinRumble]) {
+      tester
+          .widget<DropdownButtonFormField<ListeningMode>>(
+            find.byKey(const Key('listening-mode')),
+          )
+          .onChanged!(mode);
+      await tester.pump();
+      await Future<void>.delayed(const Duration(seconds: 1));
+      await tester.pump();
+      expect((await engine.stats()).playing, isTrue);
+      expect((await engine.stats()).failed, isFalse);
+    }
+    final listening = await binding.takeScreenshot('listening-controls');
+    binding.reportData!.remove('screenshots');
+    binding.reportData!['listening-controls'] = base64Encode(listening);
+    await tester.scrollUntilVisible(find.byKey(const Key('throttle')), -250);
     final slider = tester.widget<Slider>(find.byKey(const Key('throttle')));
     slider.onChanged!(0.35);
     await tester.pump();
@@ -35,6 +55,7 @@ void main() {
     final rev = await engine.stats();
     expect(rev.failed, isFalse);
     expect(rev.rpm, greaterThan(idle.rpm + 500));
+    await tester.scrollUntilVisible(find.byKey(const Key('start')), -250);
     // Render intermediate animation frames before capturing the needle.
     for (var frame = 0; frame < 30; frame++) {
       await tester.pump(const Duration(milliseconds: 16));
@@ -58,11 +79,16 @@ void main() {
     }
     expect((await engine.stats()).playing, isFalse);
     await tester.pump(const Duration(milliseconds: 200));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('engine-preset')),
+      -250,
+    );
     final selector = tester.widget<DropdownButtonFormField<String>>(
       find.byKey(const Key('engine-preset')),
     );
     selector.onChanged!('atg-video-1/03_harley_davidson_shovelhead');
     await tester.pump();
+    await tester.scrollUntilVisible(find.byKey(const Key('start')), 250);
     await tester.tap(find.byKey(const Key('start')));
     await tester.pump();
     await Future<void>.delayed(const Duration(seconds: 5));

@@ -9,7 +9,11 @@ Future<void> main() async {
       if (data == null) return;
       final dir = Directory('build/screenshots');
       await dir.create(recursive: true);
-      for (final name in ['dashboard-off', 'dashboard-running']) {
+      for (final name in [
+        'dashboard-off',
+        'dashboard-running',
+        'listening-controls',
+      ]) {
         final encoded = data.remove(name) as String?;
         if (encoded != null) {
           await File('${dir.path}/$name.png')

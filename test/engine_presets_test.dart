@@ -56,11 +56,36 @@ void main() {
         'preset': 'atg-video-1/04_hayabusa',
       });
       expect(selector().onChanged, isNull);
+      final mixSelector = tester.widget<DropdownButtonFormField<ListeningMode>>(
+        find.byKey(const Key('listening-mode')),
+      );
+      mixSelector.onChanged!(ListeningMode.cabinRumble);
+      await tester.pump();
+      expect(calls.lastWhere((c) => c.method == 'listeningMix').arguments, {
+        'mode': 2,
+        'strength': 0.5,
+      });
+      tester
+          .widget<Slider>(find.byKey(const Key('rumble-strength')))
+          .onChanged!(0.8);
+      await tester.pump();
+      expect(calls.lastWhere((c) => c.method == 'listeningMix').arguments, {
+        'mode': 2,
+        'strength': 0.8,
+      });
       await tester.tap(find.byKey(const Key('start')));
       await tester.pump();
       expect(calls.where((c) => c.method == 'shutdown'), hasLength(1));
       expect(calls.where((c) => c.method == 'stop'), isEmpty);
       expect(find.text('STOPPING'), findsOneWidget);
+      expect(
+        tester
+            .widget<DropdownButtonFormField<ListeningMode>>(
+              find.byKey(const Key('listening-mode')),
+            )
+            .onChanged,
+        isNull,
+      );
       expect(
         tester.widget<InstrumentCluster>(find.byType(InstrumentCluster)).rpm,
         2400,

@@ -19,6 +19,7 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private external fun nativeStop()
     private external fun nativeShutdown()
     private external fun nativeControls(throttle: Float, volume: Float)
+    private external fun nativeListeningMix(mode: Int, strength: Float)
     private external fun nativeStats(): DoubleArray
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         System.loadLibrary("revev_audio")
@@ -83,6 +84,11 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "controls" -> {
                 nativeControls((call.argument<Number>("throttle") ?: 0).toFloat(),
                     (call.argument<Number>("volume") ?: 0.15).toFloat())
+                result.success(null)
+            }
+            "listeningMix" -> {
+                nativeListeningMix((call.argument<Number>("mode") ?: 0).toInt(),
+                    (call.argument<Number>("strength") ?: 0.5).toFloat())
                 result.success(null)
             }
             "stats" -> {

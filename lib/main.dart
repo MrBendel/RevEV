@@ -58,6 +58,9 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
   String? _testPhase;
   EngineStats _stats = const EngineStats();
   String _preset = 'generic';
+  ListeningMode _listeningMode = ListeningMode.original;
+  double _rumbleStrength = 0.5;
+  bool _mixBusy = false;
   double _throttle = 0, _volume = 0.15;
   bool _busy = false, _polling = false;
   int _session = 0;
@@ -150,6 +153,8 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
           ..reset()
           ..start();
         _throttle = 0;
+        await _sendListeningMix();
+        if (!mounted || session != _session) return;
         await _engine.controls(0, _volume);
         if (!mounted || session != _session) return;
         await _engine.start(preset: _preset);
@@ -183,6 +188,46 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
       await _engine.controls(_throttle, _volume);
     } catch (e) {
       if (mounted) setState(() => _error = 'Controls unavailable: $e');
+    }
+  }
+
+  Future<void> _sendListeningMix() async {
+    final mode = _listeningMode;
+    final strength = _rumbleStrength;
+    await _engine.listeningMix(mode, strength);
+    if (_sessionClock.isRunning) {
+      if (_debug.listeningChanges.length == 128) {
+        _debug.listeningChanges.removeAt(0);
+      }
+      _debug.listeningChanges.add({
+        'elapsedMs': _sessionClock.elapsedMilliseconds,
+        'mode': mode.name,
+        'strength': strength,
+      });
+    }
+  }
+
+  Future<void> _changeListeningMix(ListeningMode mode, double strength) async {
+    if (_mixBusy) return;
+    final previousMode = _listeningMode;
+    final previousStrength = _rumbleStrength;
+    setState(() {
+      _mixBusy = true;
+      _listeningMode = mode;
+      _rumbleStrength = strength;
+    });
+    try {
+      await _sendListeningMix();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _listeningMode = previousMode;
+          _rumbleStrength = previousStrength;
+          _error = 'Could not change listening mode: $e';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _mixBusy = false);
     }
   }
 
@@ -654,6 +699,52 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                     ],
                   ),
                   const SizedBox(height: 12),
+                  DropdownButtonFormField<ListeningMode>(
+                    key: const Key('listening-mode'),
+                    initialValue: _listeningMode,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Listening mode',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      for (final mode in ListeningMode.values)
+                        DropdownMenuItem(value: mode, child: Text(mode.label)),
+                    ],
+                    onChanged: _testing || _busy || _mixBusy || _stats.stopping
+                        ? null
+                        : (mode) {
+                            if (mode != null) {
+                              unawaited(
+                                _changeListeningMix(mode, _rumbleStrength),
+                              );
+                            }
+                          },
+                  ),
+                  if (_listeningMode == ListeningMode.cabinRumble) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'Rumble strength · ${(_rumbleStrength * 100).round()}%',
+                    ),
+                    Slider(
+                      key: const Key('rumble-strength'),
+                      value: _rumbleStrength,
+                      semanticFormatterCallback: (v) =>
+                          'Rumble ${(v * 100).round()} percent',
+                      onChanged:
+                          _testing || _busy || _mixBusy || _stats.stopping
+                          ? null
+                          : (v) => unawaited(
+                              _changeListeningMix(_listeningMode, v),
+                            ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Compare at the same throttle and output. Best heard on headphones or car speakers.',
+                    style: TextStyle(fontSize: 11, color: leatherMuted),
+                  ),
+                  const SizedBox(height: 18),
                   const Text(
                     'MANUAL SOUND TEST',
                     textAlign: TextAlign.center,

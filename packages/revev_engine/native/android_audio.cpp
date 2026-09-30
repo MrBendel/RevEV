@@ -59,6 +59,10 @@ extern "C" JNIEXPORT void JNICALL
 Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeControls(JNIEnv*, jobject, jfloat throttle, jfloat volume) {
     engine.setThrottle(throttle); engine.setVolume(volume);
 }
+extern "C" JNIEXPORT void JNICALL
+Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeListeningMix(JNIEnv*, jobject, jint mode, jfloat strength) {
+    engine.setListeningMix(mode, strength);
+}
 extern "C" JNIEXPORT jdoubleArray JNICALL
 Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeStats(JNIEnv *env, jobject) {
     const double stats[] = {engine.rpm(), engine.workMs(), static_cast<double>(engine.underruns()),

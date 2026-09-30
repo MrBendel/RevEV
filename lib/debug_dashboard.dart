@@ -13,6 +13,7 @@ class DebugSession {
   String status = 'No session';
   String? error;
   String preset = 'generic';
+  final List<Map<String, Object>> listeningChanges = [];
   String testResult = 'Manual session';
   final List<Map<String, Object>> testPhases = [];
   EngineStats latest = const EngineStats();
@@ -34,6 +35,7 @@ class DebugSession {
     error = null;
     testResult = 'Manual session';
     testPhases.clear();
+    listeningChanges.clear();
     latest = const EngineStats();
     samples = 0;
     _sum = peakMs = 0;
@@ -61,6 +63,7 @@ class DebugSession {
   String report() => const JsonEncoder.withIndent('  ').convert({
     'app': 'RevEV',
     'enginePreset': preset,
+    'listeningChanges': listeningChanges,
     'platform': defaultTargetPlatform.name,
     'buildMode': kReleaseMode
         ? 'release'
