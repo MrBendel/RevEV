@@ -215,8 +215,14 @@ void main() {
       );
       await tester.tap(find.byKey(const Key('start')));
       await tester.pump();
-      expect(calls.first.method, 'controls');
-      expect(calls.first.arguments['throttle'], 0.0);
+      expect(
+        calls.firstWhere((c) => c.method == 'controls').arguments['throttle'],
+        0.0,
+      );
+      expect(
+        calls.indexWhere((c) => c.method == 'controls'),
+        lessThan(calls.indexWhere((c) => c.method == 'start')),
+      );
       expect(find.text('STOP'), findsOneWidget);
       tester.widget<Slider>(find.byKey(const Key('throttle'))).onChanged!(0.4);
       await tester.pump();

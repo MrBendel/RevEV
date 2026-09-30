@@ -1,5 +1,28 @@
 # Prototype validation — 2026-09-27
 
+## Cabin/rumble experiment — 2026-09-29
+
+- Static analysis clean; 14 Flutter tests pass, including forwarding mode and
+  strength to native and locking listening controls during shutdown.
+- Native DSP checks pass on Android x86_64: exact Original bypass, reduced treble,
+  greater low-frequency weight, finite bounded samples, smooth mode transitions,
+  and decay to silence. Steady test-signal RMS ratios: Cabin 1.000 and Rumble 1.001.
+  A standalone check processed 19 seconds of signals in 36.81 ms; this is not a
+  physical-phone performance measurement or a full-engine benchmark.
+- Android APK builds. Integration assertions pass for live mode changes, rev,
+  shutdown and switching/restarting the engine (see `build/listening-integration-final.log`).
+  The emulator disconnected afterward during driver result/screenshot export,
+  so the overall driver command exited unsuccessfully. Screenshots from that run
+  were not exported. Earlier attempts also had debugger-transport interruptions.
+- Offline comparison WAVs in `build/listening-preview/` use identical generic
+  engine PCM: idle, 35% throttle, ignition off. Rumble strength is 100%, output
+  gain 50%; app defaults remain Original and 50% rumble strength. Clips have no
+  wholly silent blocks during steady rev and no clipped samples. They bypass
+  real-time playback pacing and cannot establish phone underrun performance.
+- iOS remains unbuilt; subjective sound quality needs listening on the target
+  speakers. Throttle is a temporary load proxy and cabin resonances are designed,
+  not measured. RMS matching is bounded and not perceptual loudness matching.
+
 ## Engine library update — 2026-09-29
 
 - Static analysis: no issues; 14 Flutter tests pass, including preset forwarding,

@@ -14,7 +14,7 @@ Pod::Spec.new do |s|
     '../native/vendor/piranha/{include,src,generated}/*.{h,hh,cpp}',
     '../native/vendor/engine-sim/dependencies/submodules/simple-2d-constraint-solver/{include,src}/*.{h,cpp}'
   s.public_header_files = 'Classes/RevevEnginePlugin.h'
-  s.exclude_files = '../native/smoke.cpp', '../native/android_audio.cpp', '../native/preset_smoke.cpp'
+  s.exclude_files = '../native/smoke.cpp', '../native/android_audio.cpp', '../native/preset_smoke.cpp', '../native/listening_mix_test.cpp'
   s.resources = '../assets/engine-sim'
   s.preserve_paths = '../native/**/*'
   s.dependency 'Flutter'

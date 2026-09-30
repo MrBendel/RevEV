@@ -46,6 +46,11 @@ the GitHub build button, and internal testing releases.
   engines that do not settle promptly. Backgrounding still stops immediately.
 - Real combustion, gas-flow and crankshaft simulation with native audio synthesis.
 - Throttle and volume controls, animated RPM/throttle/output instruments.
+- **Listening mode** offers Original (existing exhaust-filtered simulation),
+  Cabin, and Cabin + Rumble. Switch while running to compare; the latter exposes
+  a rumble-strength slider. Controls lock during the automatic test and shutdown.
+  Use the same throttle/output and allow a few seconds for level matching.
+  Headphones or car speakers are more useful than a phone speaker for bass.
 - Performance panel: processing time per 10 ms simulated-audio block and underruns.
 - Expand **Debug dashboard** below the controls for live RPM, sampled timing
   averages/peaks, recent P95, a timing chart and underruns. **Copy debug report**
@@ -70,6 +75,16 @@ a device's processing budget and produce underruns; check the debug dashboard.
 CPU performance on the emulator is not a phone benchmark.
 The reported block time is simulation work, not CPU percentage or speaker latency.
 The audio rate is fixed at 44.1 kHz; Android may need sample-rate conversion.
+
+The listening experiment uses a 1.4 kHz cabin low-pass and exhaust-excited
+resonances at 65, 95 and 110 Hz. There is no independent bass oscillator or
+recorded engine loop. Throttle is currently a proxy for driving load; resonances
+are designed approximations, not a measured cabin model. Slow, bounded RMS
+matching reduces loudness bias, but does not guarantee equal perceived loudness.
+The native worker includes this processing in the reported block time. Debug
+reports retain the most recent 128 mode/strength changes with session timestamps.
+The standalone `revev_listening_test` checks bypass, spectrum, matching, peaks,
+transitions and silence decay; CI runs it on Linux.
 
 ## Architecture
 

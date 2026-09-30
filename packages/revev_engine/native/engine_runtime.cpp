@@ -3,6 +3,7 @@
 #include "script_preset.h"
 #include "preset_catalog.h"
 #include "exhaust_response.h"
+#include "listening_mix.h"
 #include "piston_engine_simulator.h"
 #include <algorithm>
 #include <chrono>
@@ -89,6 +90,7 @@ void EngineRuntime::run() {
         auto shutdownStarted = clock::time_point{};
         float filteredThrottle = 0;
         std::array<int16_t, 441> pcm{};
+        ListeningMix listeningMix;
         while (running_) {
             auto w = write_.load(std::memory_order_relaxed);
             if (w - read_.load(std::memory_order_acquire) >= 1323) {
@@ -118,9 +120,12 @@ void EngineRuntime::run() {
             rpm_ = std::max(0.0f, rpm);
             if (shuttingDown && ((shutdownElapsed > 0.3 && std::abs(rpm) < 60) || shutdownElapsed >= 8 ||
                 t - shutdownStarted >= std::chrono::seconds(8))) fading = true;
+            const int mode = listeningMode_.load();
+            const float strength = rumbleStrength_.load();
             for (uint32_t i = 0; i < pcm.size(); ++i) {
                 const float fade = fading ? std::max(0.0, 1.0 - (fadeElapsed + i / 44100.0) / 0.2) : 1.0;
-                buffer_[(w + i) % capacity] = pcm[i] / 32768.0f * fade;
+                buffer_[(w + i) % capacity] = listeningMix.process(
+                    pcm[i] / 32768.0f, mode, strength, filteredThrottle) * fade;
             }
             write_.store(w + pcm.size(), std::memory_order_release);
             workMs_ = std::chrono::duration<float, std::milli>(clock::now() - t).count();

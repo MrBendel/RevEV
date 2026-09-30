@@ -82,6 +82,9 @@
         [self stop]; result(nil);
     } else if ([call.method isEqualToString:@"shutdown"]) {
         if (_playing) _runtime->shutdown(); result(nil);
+    } else if ([call.method isEqualToString:@"listeningMix"]) {
+        _runtime->setListeningMix([call.arguments[@"mode"] intValue], [call.arguments[@"strength"] floatValue]);
+        result(nil);
     } else if ([call.method isEqualToString:@"controls"]) {
         _runtime->setThrottle([call.arguments[@"throttle"] floatValue]);
         _runtime->setVolume([call.arguments[@"volume"] floatValue]);

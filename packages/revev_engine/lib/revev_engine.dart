@@ -2,6 +2,15 @@ import 'package:flutter/services.dart';
 
 export 'engine_presets.dart';
 
+enum ListeningMode {
+  original('Original'),
+  cabin('Cabin'),
+  cabinRumble('Cabin + Rumble');
+
+  const ListeningMode(this.label);
+  final String label;
+}
+
 class EngineStats {
   const EngineStats({
     this.rpm = 0,
@@ -22,6 +31,11 @@ class RevevEngine {
       _channel.invokeMethod<void>('start', {'preset': preset});
   Future<void> shutdown() => _channel.invokeMethod<void>('shutdown');
   Future<void> stop() => _channel.invokeMethod<void>('stop');
+  Future<void> listeningMix(ListeningMode mode, double strength) =>
+      _channel.invokeMethod<void>('listeningMix', {
+        'mode': mode.index,
+        'strength': strength,
+      });
   Future<void> controls(double throttle, double volume) => _channel
       .invokeMethod<void>('controls', {'throttle': throttle, 'volume': volume});
   Future<EngineStats> stats() async {
