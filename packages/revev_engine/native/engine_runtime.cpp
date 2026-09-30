@@ -1,13 +1,29 @@
 #include "engine_runtime.h"
 #include "engine_preset.h"
+#include "script_preset.h"
+#include "preset_catalog.h"
+#include "exhaust_response.h"
 #include "piston_engine_simulator.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <memory>
 
-void EngineRuntime::start() {
+namespace {
+class SessionSimulator : public PistonEngineSimulator {
+public:
+    ~SessionSimulator() {
+        PistonEngineSimulator::destroy();
+        Simulator::destroy();
+    }
+};
+}
+
+void EngineRuntime::start(const std::string &root, const std::string &preset) {
+    const auto entry = presetEntry(preset);
     if (running_.exchange(true)) return;
+    assetRoot_ = root; presetEntry_ = entry;
+    stopping_ = false; done_ = false; workMs_ = 0;
     read_ = 0; write_ = 0; underruns_ = 0; rpm_ = 0; failed_ = false; gain_ = 0;
     worker_ = std::thread(&EngineRuntime::run, this);
 }
@@ -32,25 +48,45 @@ void EngineRuntime::render(float *out, int frames) {
         out[i] = i < static_cast<int>(count) ? buffer_[(r + i) % capacity] * gain_ : 0;
     }
     read_.store(r + count, std::memory_order_release);
-    if (count < static_cast<uint32_t>(frames)) ++underruns_;
+    if (!done_ && count < static_cast<uint32_t>(frames)) ++underruns_;
 }
 void EngineRuntime::run() {
     using clock = std::chrono::steady_clock;
     try {
-        EnginePreset preset;
-        PistonEngineSimulator sim;
+        ScriptPreset preset(assetRoot_, presetEntry_);
+        SessionSimulator sim;
         sim.initialize({Simulator::SystemType::NsvOptimized});
-        sim.loadSimulation(&preset.engine, &preset.vehicle, &preset.transmission);
-        sim.setSimulationFrequency(10000);
+        sim.setSimulationFrequency(static_cast<int>(preset.engine->getSimulationFrequency()));
+        sim.loadSimulation(preset.engine, preset.vehicle, preset.transmission);
         sim.setFluidSimulationSteps(8);
-        // Identity impulse: no external recording / impulse-response license.
-        const int16_t impulse[] = {32767};
-        sim.synthesizer().initializeImpulseResponse(impulse, 1, 1, 0);
+        for (int i = 0; i < preset.engine->getExhaustSystemCount(); ++i) {
+            const auto *response = preset.engine->getExhaustSystem(i)->getImpulseResponse();
+            if (response || !assetRoot_.empty()) {
+                auto pcm = readExhaustResponse(response ? response->getFilename() :
+                    assetRoot_ + "/es/sound-library/new/mild_exhaust.wav");
+                sim.synthesizer().initializeImpulseResponse(pcm.data(), pcm.size(),
+                    response ? response->getVolume() : 0.01, i);
+            } else {
+                // Standalone generic smoke tests without an asset directory.
+                const int16_t impulse[] = {8192, 8192, 8192, 8191};
+                sim.synthesizer().initializeImpulseResponse(impulse, 4, 1, i);
+            }
+        }
         auto audio = sim.synthesizer().getAudioParameters();
-        audio.airNoise = 0.2f; audio.inputSampleNoise = 0.1f;
+        audio.airNoise = presetEntry_.empty() ? 0.1f : preset.engine->getInitialNoise();
+        audio.inputSampleNoise = presetEntry_.empty() ? 0.05f : preset.engine->getInitialJitter();
+        audio.dF_F_mix = preset.engine->getInitialHighFrequencyGain();
         audio.levelerTarget = 12000;
         sim.synthesizer().setAudioParameters(audio);
         double elapsed = 0;
+        bool started = false;
+        // The heavy aircraft flywheels need a longer closed-throttle crank.
+        const bool longCrank = presetEntry_ == "entries/atg-video-2/09_radial_9.mr" ||
+            presetEntry_ == "entries/atg-video-2/11_merlin_v12.mr";
+        const double crankTimeout = longCrank ? 12.0 : 5.0;
+        double shutdownElapsed = 0, fadeElapsed = 0;
+        bool fading = false;
+        auto shutdownStarted = clock::time_point{};
         float filteredThrottle = 0;
         std::array<int16_t, 441> pcm{};
         while (running_) {
@@ -60,9 +96,16 @@ void EngineRuntime::run() {
                 continue;
             }
             const auto t = clock::now();
-            filteredThrottle += (throttle_.load() - filteredThrottle) * 0.08f;
-            preset.engine.setSpeedControl(filteredThrottle);
-            sim.m_starterMotor.m_enabled = elapsed < 1.5;
+            const bool shuttingDown = stopping_.load();
+            if (shuttingDown && shutdownStarted == clock::time_point{}) shutdownStarted = t;
+            if (elapsed > 0.5 && preset.engine->getRpm() > 600) started = true;
+            const float targetThrottle = shuttingDown ? 0.0f :
+                std::max(throttle_.load(), !longCrank && !started && elapsed < crankTimeout ? 0.08f : 0.0f);
+            filteredThrottle += (targetThrottle - filteredThrottle) * 0.08f;
+            preset.engine->setSpeedControl(filteredThrottle);
+            preset.engine->getIgnitionModule()->m_enabled = !shuttingDown;
+            sim.m_starterMotor.m_enabled = !shuttingDown && (elapsed < 1.5 || (!started && elapsed < crankTimeout));
+            if (shuttingDown) shutdownElapsed += 0.01;
             sim.startFrame(0.01);
             while (sim.simulateStep()) {}
             sim.endFrame();
@@ -70,16 +113,23 @@ void EngineRuntime::run() {
             // mutexes and physics allocations never enter the audio callback.
             sim.synthesizer().renderAudio();
             sim.readAudioOutput(pcm.size(), pcm.data());
-            const float rpm = static_cast<float>(preset.engine.getRpm());
-            if (!std::isfinite(rpm) || rpm > 12000) { failed_ = true; break; }
-            rpm_ = rpm;
-            for (uint32_t i = 0; i < pcm.size(); ++i) buffer_[(w + i) % capacity] = pcm[i] / 32768.0f;
+            const float rpm = static_cast<float>(preset.engine->getRpm());
+            if (!std::isfinite(rpm) || std::abs(rpm) > 40000) { failed_ = true; break; }
+            rpm_ = std::max(0.0f, rpm);
+            if (shuttingDown && ((shutdownElapsed > 0.3 && std::abs(rpm) < 60) || shutdownElapsed >= 8 ||
+                t - shutdownStarted >= std::chrono::seconds(8))) fading = true;
+            for (uint32_t i = 0; i < pcm.size(); ++i) {
+                const float fade = fading ? std::max(0.0, 1.0 - (fadeElapsed + i / 44100.0) / 0.2) : 1.0;
+                buffer_[(w + i) % capacity] = pcm[i] / 32768.0f * fade;
+            }
             write_.store(w + pcm.size(), std::memory_order_release);
             workMs_ = std::chrono::duration<float, std::milli>(clock::now() - t).count();
             elapsed += 0.01;
+            if (fading) {
+                fadeElapsed += 0.01;
+                if (fadeElapsed >= 0.2) { done_ = true; break; }
+            }
         }
-        sim.destroy();
-        sim.Simulator::destroy();
     } catch (...) {
         failed_ = true;
     }

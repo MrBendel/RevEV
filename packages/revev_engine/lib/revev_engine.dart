@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 
+export 'engine_presets.dart';
+
 class EngineStats {
   const EngineStats({
     this.rpm = 0,
@@ -7,15 +9,18 @@ class EngineStats {
     this.underruns = 0,
     this.playing = false,
     this.failed = false,
+    this.stopping = false,
   });
   final double rpm, workMs;
   final int underruns;
-  final bool playing, failed;
+  final bool playing, failed, stopping;
 }
 
 class RevevEngine {
   static const _channel = MethodChannel('revev_engine');
-  Future<void> start() => _channel.invokeMethod<void>('start');
+  Future<void> start({String preset = 'generic'}) =>
+      _channel.invokeMethod<void>('start', {'preset': preset});
+  Future<void> shutdown() => _channel.invokeMethod<void>('shutdown');
   Future<void> stop() => _channel.invokeMethod<void>('stop');
   Future<void> controls(double throttle, double volume) => _channel
       .invokeMethod<void>('controls', {'throttle': throttle, 'volume': volume});
@@ -27,6 +32,7 @@ class RevevEngine {
       underruns: (data['underruns'] as num? ?? 0).toInt(),
       playing: data['playing'] == true,
       failed: data['failed'] == true,
+      stopping: data['stopping'] == true,
     );
   }
 }

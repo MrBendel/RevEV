@@ -51,6 +51,7 @@ app.*.map.json
 /third_party/
 **/.cxx/
 **/.gradle/
+**/.kotlin/
 **/.dart_tool/
 **/build/
 

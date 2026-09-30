@@ -18,7 +18,9 @@ void main() {
         .setMockMethodCallHandler(channel, (call) async {
           calls.add(call);
           if (call.method == 'start') playing = true;
-          if (call.method == 'stop') playing = false;
+          if (call.method == 'stop' || call.method == 'shutdown') {
+            playing = false;
+          }
           if (call.method == 'stats') {
             return {
               'playing': playing,
@@ -55,7 +57,9 @@ void main() {
             .setMockMethodCallHandler(channel, (call) async {
               calls.add(call);
               if (call.method == 'start') playing = true;
-              if (call.method == 'stop') playing = false;
+              if (call.method == 'stop' || call.method == 'shutdown') {
+                playing = false;
+              }
               if (call.method == 'controls' &&
                   call.arguments['throttle'] == 0.35) {
                 await pendingRev.future;
@@ -131,6 +135,8 @@ void main() {
       );
       expect(playing, isFalse);
       expect(session.samples, greaterThan(0));
+      await tester.pump(const Duration(milliseconds: 150));
+      await tester.pump();
       expect(dashboard(tester).onRunTest, isNotNull);
       dashboard(tester).onRunTest!();
       await tester.pump();

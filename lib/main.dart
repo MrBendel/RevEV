@@ -12,7 +12,7 @@ import 'package:revev_engine/revev_engine.dart';
 void main() {
   LicenseRegistry.addLicense(() async* {
     yield LicenseEntryWithLineBreaks(
-      ['engine-sim', 'simple-2d-constraint-solver'],
+      ['engine-sim', 'simple-2d-constraint-solver', 'Piranha', 'Flex/Bison'],
       await rootBundle.loadString(
         'packages/revev_engine/THIRD_PARTY_NOTICES.txt',
       ),
@@ -57,6 +57,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
   bool _testing = false;
   String? _testPhase;
   EngineStats _stats = const EngineStats();
+  String _preset = 'generic';
   double _throttle = 0, _volume = 0.15;
   bool _busy = false, _polling = false;
   int _session = 0;
@@ -100,7 +101,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
         });
         if (_testing) {
           _cancelTest('Failed: diagnostics unavailable');
-          await _toggle();
+          await _toggle(immediate: true);
         }
       }
     } finally {
@@ -108,8 +109,8 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _toggle() async {
-    if (_busy) return;
+  Future<void> _toggle({bool immediate = false}) async {
+    if (_busy || (_stats.stopping && !immediate)) return;
     final session = ++_session;
     setState(() {
       _busy = true;
@@ -118,23 +119,40 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
     try {
       if (_stats.playing) {
         _cancelTest('Cancelled');
-        await _engine.stop();
-        _finishDebug('Stopped');
+        if (immediate) {
+          await _engine.stop();
+        } else {
+          await _engine.shutdown();
+        }
         if (mounted) {
           setState(() {
-            _stats = const EngineStats();
+            _stats = immediate
+                ? const EngineStats()
+                : EngineStats(
+                    playing: true,
+                    stopping: true,
+                    rpm: _stats.rpm,
+                    workMs: _stats.workMs,
+                    underruns: _stats.underruns,
+                  );
+            if (immediate) {
+              _finishDebug('Stopped');
+            } else {
+              _debug.status = 'Coasting down';
+            }
             _throttle = 0;
           });
         }
       } else {
         _debug.begin();
+        _debug.preset = _preset;
         _sessionClock
           ..reset()
           ..start();
         _throttle = 0;
         await _engine.controls(0, _volume);
         if (!mounted || session != _session) return;
-        await _engine.start();
+        await _engine.start(preset: _preset);
         if (!mounted || session != _session) {
           await _engine.stop();
           return;
@@ -186,6 +204,22 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
 
   Future<void> _advanceTest(int phase, int generation) async {
     if (!mounted || !_testing || generation != _testGeneration) return;
+    if (phase == 0 && _stats.rpm < 600) {
+      await _refresh();
+      if (!mounted || !_testing || generation != _testGeneration) return;
+      if (_stats.rpm < 600) {
+        if (_sessionClock.elapsed > const Duration(seconds: 30)) {
+          _cancelTest('Failed: engine did not start');
+          await _toggle(immediate: true);
+        } else {
+          _testTimer = Timer(
+            const Duration(milliseconds: 150),
+            () => unawaited(_advanceTest(0, generation)),
+          );
+        }
+        return;
+      }
+    }
     if (phase == 3) {
       await _refresh();
       if (!mounted || !_testing || generation != _testGeneration) return;
@@ -217,7 +251,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
       if (!mounted || generation != _testGeneration) return;
       _debug.error = 'Test controls failed: $e';
       _cancelTest('Failed: controls unavailable');
-      await _toggle();
+      await _toggle(immediate: true);
     }
   }
 
@@ -315,7 +349,11 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                       const SizedBox(width: 8),
                       Flexible(
                         child: Text(
-                          _stats.playing ? 'ENGINE RUNNING' : 'ENGINE OFF',
+                          _stats.stopping
+                              ? 'COASTING DOWN'
+                              : _stats.playing
+                              ? 'ENGINE RUNNING'
+                              : 'ENGINE OFF',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -350,8 +388,36 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                     ),
                   ),
                   const SizedBox(height: 20),
+                  DropdownButtonFormField<String>(
+                    key: const Key('engine-preset'),
+                    initialValue: _preset,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Engine',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      for (final preset in enginePresets)
+                        DropdownMenuItem(
+                          value: preset.id,
+                          child: Text(
+                            preset.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: _stats.playing || _busy || _testing
+                        ? null
+                        : (value) {
+                            if (value != null) setState(() => _preset = value);
+                          },
+                  ),
+                  const SizedBox(height: 12),
                   InstrumentCluster(
                     rpm: _stats.rpm,
+                    maxRpm: enginePresets
+                        .firstWhere((p) => p.id == _preset)
+                        .maxRpm,
                     throttle: _throttle,
                     volume: _volume,
                     running: _stats.playing,
@@ -365,13 +431,15 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                         height: 1,
                         color: const Color(0xff635b4e),
                       ),
-                      const Flexible(
+                      Flexible(
                         child: Padding(
                           padding: EdgeInsets.symmetric(horizontal: 13),
                           child: FittedBox(
                             child: Text(
-                              '2.0  /  INLINE FOUR',
-                              style: TextStyle(
+                              enginePresets
+                                  .firstWhere((p) => p.id == _preset)
+                                  .name,
+                              style: const TextStyle(
                                 fontSize: 12,
                                 letterSpacing: 2,
                                 color: ivory,
@@ -422,7 +490,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                         height: 82,
                         child: FilledButton(
                           key: const Key('start'),
-                          onPressed: _busy ? null : _toggle,
+                          onPressed: _busy || _stats.stopping ? null : _toggle,
                           style: FilledButton.styleFrom(
                             padding: EdgeInsets.zero,
                             backgroundColor: const Color(0xff242321),
@@ -448,6 +516,8 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                               Text(
                                 _busy
                                     ? 'WAIT'
+                                    : _stats.stopping
+                                    ? 'STOPPING'
                                     : _stats.playing
                                     ? 'STOP'
                                     : 'START',
@@ -514,7 +584,11 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                       value: _throttle,
                       semanticFormatterCallback: (v) =>
                           'Throttle ${(v * 100).round()} percent',
-                      onChanged: _stats.playing && !_busy && !_testing
+                      onChanged:
+                          _stats.playing &&
+                              !_stats.stopping &&
+                              !_busy &&
+                              !_testing
                           ? (v) {
                               setState(() => _throttle = v);
                               _controls();

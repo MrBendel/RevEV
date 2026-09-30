@@ -8,7 +8,9 @@ Revision: `e009f4ff1c9c4c5874e865e893cdb62e208fb2b3`
 
 Both upstream licenses are MIT and are preserved in the vendor tree and bundled
 notices. This uses the original open-source repository, not Community Edition.
-The app's generic engine definition and identity impulse are locally authored.
+The app's generic engine definition is locally authored. Exhaust impulse
+responses and selectable definitions are bundled from upstream; see
+[engine library notes](ENGINE_LIBRARY.md) for the scripting compiler port.
 
 ## Modifications to the vendored core
 
@@ -26,8 +28,10 @@ The app's generic engine definition and identity impulse are locally authored.
 - Freed synthesizer transfer buffers, jitter history, connecting-rod journals,
   crankshaft-link constraints and dyno samples during teardown.
 - Initialized the synthesizer latency field.
+- Removed an unused fixed eight-cylinder valve-lift scratch array that overflowed
+  when running V10/V12 and nine-cylinder radial definitions.
 - Removed upstream frame-latency feedback: the new worker processes deterministic
-  100-step simulation frames at 10 kHz and paces from its output queue instead.
+  10 ms simulation frames at each definition's frequency and paces from its output queue instead.
 
 The physics and sound generation algorithms otherwise remain upstream. The
 upstream synthesis thread is deliberately not launched: the same worker executes
@@ -37,7 +41,7 @@ atomic SPSC buffer, so the platform audio callback never touches upstream locks.
 ## Limitations
 
 44.1 kHz mono output; a roughly 30–40 ms producer queue plus platform/car latency.
-Eight gas-flow substeps per 10 kHz physics step. No real-time performance guarantee
+Eight gas-flow substeps per physics step. No real-time performance guarantee
 has been established for a physical handset. Production work should profile and
 possibly support the output device's preferred sample rate.
 

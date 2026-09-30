@@ -1,0 +1,3 @@
+import "engine_sim.mr"
+import "assets/engines/chevrolet/engine_03_for_e1.mr"
+set_engine(engine_03_for_e1())

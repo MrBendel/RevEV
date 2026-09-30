@@ -12,6 +12,7 @@ class DebugSession {
   Duration elapsed = Duration.zero;
   String status = 'No session';
   String? error;
+  String preset = 'generic';
   String testResult = 'Manual session';
   final List<Map<String, Object>> testPhases = [];
   EngineStats latest = const EngineStats();
@@ -44,6 +45,8 @@ class DebugSession {
     elapsed = duration;
     status = stats.failed
         ? 'Failed'
+        : stats.stopping
+        ? 'Coasting down'
         : stats.playing
         ? 'Running'
         : 'Stopped';
@@ -57,6 +60,7 @@ class DebugSession {
 
   String report() => const JsonEncoder.withIndent('  ').convert({
     'app': 'RevEV',
+    'enginePreset': preset,
     'platform': defaultTargetPlatform.name,
     'buildMode': kReleaseMode
         ? 'release'

@@ -45,7 +45,7 @@
         withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
     _playing = NO;
 }
-- (NSError*)start {
+- (NSError*)start:(NSString*)preset {
     [self stop];
     AVAudioSession *session = AVAudioSession.sharedInstance;
     NSError *error = nil;
@@ -65,24 +65,32 @@
         }];
     [_audio attachNode:_source];
     [_audio connect:_source to:_audio.mainMixerNode format:format];
-    _runtime->start();
+    NSString *root = [NSBundle.mainBundle pathForResource:@"engine-sim" ofType:nil];
+    try { _runtime->start(root ? root.UTF8String : "", preset.UTF8String); }
+    catch (...) {
+        [self stop];
+        return [NSError errorWithDomain:@"RevEV" code:1 userInfo:@{NSLocalizedDescriptionKey: @"Unknown engine preset"}];
+    }
     if (![_audio startAndReturnError:&error]) [self stop];
     return error;
 }
 - (void)handleMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
     if ([call.method isEqualToString:@"start"]) {
-        NSError *error = [self start];
+        NSError *error = [self start:call.arguments[@"preset"] ?: @"generic"];
         result(error ? [FlutterError errorWithCode:@"audio_start" message:error.localizedDescription details:nil] : nil);
     } else if ([call.method isEqualToString:@"stop"]) {
         [self stop]; result(nil);
+    } else if ([call.method isEqualToString:@"shutdown"]) {
+        if (_playing) _runtime->shutdown(); result(nil);
     } else if ([call.method isEqualToString:@"controls"]) {
         _runtime->setThrottle([call.arguments[@"throttle"] floatValue]);
         _runtime->setVolume([call.arguments[@"volume"] floatValue]);
         result(nil);
     } else if ([call.method isEqualToString:@"stats"]) {
-        if (_runtime->failed()) [self stop];
+        if (_runtime->failed() || _runtime->finished()) [self stop];
         result(@{@"rpm": @(_runtime->rpm()), @"workMs": @(_runtime->workMs()),
-            @"underruns": @(_runtime->underruns()), @"failed": @(_runtime->failed()), @"playing": @(_playing)});
+            @"underruns": @(_runtime->underruns()), @"failed": @(_runtime->failed()), @"playing": @(_playing),
+            @"stopping": @(_playing && _runtime->stopping())});
     } else result(FlutterMethodNotImplemented);
 }
 - (void)dealloc {
