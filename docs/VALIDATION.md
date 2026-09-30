@@ -1,5 +1,19 @@
 # Prototype validation â€” 2026-09-27
 
+## Audio headroom and limiter — 2026-09-30
+
+- Synthesizer float transport test passes on Android x86_64: values above full
+  scale reach the mixer unchanged, short reads zero-fill, and legacy int16
+  callers still receive saturated PCM.
+- Output limiter tests pass on Android x86_64: exact low-level passthrough after
+  220-sample delay, bounded overload/impulses in all listening modes, recovery,
+  non-finite input handling and silence. DSP test is also added to GitHub CI.
+- Native library and harness build passes. GM LS runtime: idle 717 rpm, peak
+  6824 rpm, finite/bounded nonzero audio; shutdown 6154 to 3 rpm completes.
+- Emulator still reports underruns (~18.6 ms processing for a 10 ms block).
+  Physical-device listening is required to distinguish remaining underruns or
+  source distortion from the upstream integer clipping removed here.
+
 ## Car presets and 911 — 2026-09-30
 
 - Dropdown/native allowlist now contains 18 car presets: generic, 16 upstream

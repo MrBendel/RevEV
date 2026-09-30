@@ -140,7 +140,21 @@ void Synthesizer::destroy() {
     m_inputChannelCount = 0;
 }
 
+// Compatibility for upstream callers. RevEV uses the float overload so no
+// clipping or integer quantization takes place before the final limiter.
 int Synthesizer::readAudioOutput(int samples, int16_t *buffer) {
+    std::lock_guard<std::mutex> lock(m_lock0);
+    const int count = std::min(samples, static_cast<int>(m_audioBuffer.size()));
+    for (int i = 0; i < samples; ++i) {
+        const float x = i < count ? m_audioBuffer.read(i) : 0.0f;
+        buffer[i] = std::isfinite(x) ? static_cast<int16_t>(
+            std::lround(std::max(-32768.0f, std::min(32767.0f, x * 32768.0f)))) : 0;
+    }
+    m_audioBuffer.removeBeginning(count);
+    return count;
+}
+
+int Synthesizer::readAudioOutput(int samples, float *buffer) {
     std::lock_guard<std::mutex> lock(m_lock0);
 
     const int newDataLength = m_audioBuffer.size();
@@ -152,7 +166,7 @@ int Synthesizer::readAudioOutput(int samples, int16_t *buffer) {
         memset(
             buffer + newDataLength,
             0,
-            sizeof(int16_t) * ((size_t)samples - newDataLength));
+            sizeof(float) * ((size_t)samples - newDataLength));
     }
     
     const int samplesConsumed = std::min(samples, newDataLength);
@@ -251,7 +265,7 @@ void Synthesizer::renderAudio() {
     }
 
     for (int i = 0; i < n; ++i) {
-        m_audioBuffer.write(renderAudio(i));
+        m_audioBuffer.write(renderAudioFloat(i));
     }
 
     m_cv0.notify_one();
@@ -280,7 +294,7 @@ void Synthesizer::setInputSampleRate(double sampleRate) {
     }
 }
 
-int16_t Synthesizer::renderAudio(int inputSample) {
+float Synthesizer::renderAudioFloat(int inputSample) {
     const float airNoise = m_audioParameters.airNoise;
     const float dF_F_mix = m_audioParameters.dF_F_mix;
     const float convAmount = m_audioParameters.convolution;
@@ -321,15 +335,13 @@ int16_t Synthesizer::renderAudio(int inputSample) {
 
     m_levelingFilter.p_target = m_audioParameters.levelerTarget;
     const float v_leveled = m_levelingFilter.f(signal) * m_audioParameters.volume;
-    int r_int = std::lround(v_leveled);
-    if (r_int > INT16_MAX) {
-        r_int = INT16_MAX;
-    }
-    else if (r_int < INT16_MIN) {
-        r_int = INT16_MIN;
-    }
+    return v_leveled / 32768.0f;
+}
 
-    return static_cast<int16_t>(r_int);
+int16_t Synthesizer::renderAudio(int inputSample) {
+    const float x = renderAudioFloat(inputSample);
+    return std::isfinite(x) ? static_cast<int16_t>(std::lround(
+        std::max(-32768.0f, std::min(32767.0f, x * 32768.0f)))) : 0;
 }
 
 double Synthesizer::getLevelerGain() {

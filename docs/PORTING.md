@@ -40,6 +40,15 @@ atomic SPSC buffer, so the platform audio callback never touches upstream locks.
 
 ## Limitations
 
+RevEV keeps synthesizer output as normalized floating-point PCM through the
+listening mix; the legacy 16-bit API remains for upstream callers. This prevents
+irreversible hard clipping before volume control. A worker-side sample-peak
+limiter follows the mix, with 220 samples (~5 ms) lookahead, a 0.89 ceiling
+(about -1 dBFS), and 100 ms exponential gain recovery. Fade and user volume
+follow the limiter. It uses fixed storage and adds no callback locks/allocations.
+This is not an oversampled true-peak limiter and cannot fix source distortion,
+buffer underruns, or clipping in downstream car amplifiers.
+
 44.1 kHz mono output; a roughly 30–40 ms producer queue plus platform/car latency.
 Eight gas-flow substeps per physics step. No real-time performance guarantee
 has been established for a physical handset. Production work should profile and

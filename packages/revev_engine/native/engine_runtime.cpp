@@ -4,6 +4,7 @@
 #include "preset_catalog.h"
 #include "exhaust_response.h"
 #include "listening_mix.h"
+#include "output_limiter.h"
 #include "piston_engine_simulator.h"
 #include <algorithm>
 #include <chrono>
@@ -89,8 +90,9 @@ void EngineRuntime::run() {
         bool fading = false;
         auto shutdownStarted = clock::time_point{};
         float filteredThrottle = 0;
-        std::array<int16_t, 441> pcm{};
+        std::array<float, 441> pcm{};
         ListeningMix listeningMix;
+        OutputLimiter limiter;
         while (running_) {
             auto w = write_.load(std::memory_order_relaxed);
             if (w - read_.load(std::memory_order_acquire) >= 1323) {
@@ -114,7 +116,7 @@ void EngineRuntime::run() {
             // Upstream renderer is used synchronously on this worker. Its
             // mutexes and physics allocations never enter the audio callback.
             sim.synthesizer().renderAudio();
-            sim.readAudioOutput(pcm.size(), pcm.data());
+            sim.synthesizer().readAudioOutput(pcm.size(), pcm.data());
             const float rpm = static_cast<float>(preset.engine->getRpm());
             if (!std::isfinite(rpm) || std::abs(rpm) > 40000) { failed_ = true; break; }
             rpm_ = std::max(0.0f, rpm);
@@ -124,8 +126,9 @@ void EngineRuntime::run() {
             const float strength = rumbleStrength_.load();
             for (uint32_t i = 0; i < pcm.size(); ++i) {
                 const float fade = fading ? std::max(0.0, 1.0 - (fadeElapsed + i / 44100.0) / 0.2) : 1.0;
-                buffer_[(w + i) % capacity] = listeningMix.process(
-                    pcm[i] / 32768.0f, mode, strength, filteredThrottle) * fade;
+                if (!std::isfinite(pcm[i])) throw std::runtime_error("Non-finite engine audio");
+                const float mixed = listeningMix.process(pcm[i], mode, strength, filteredThrottle);
+                buffer_[(w + i) % capacity] = limiter.process(mixed) * fade;
             }
             write_.store(w + pcm.size(), std::memory_order_release);
             workMs_ = std::chrono::duration<float, std::milli>(clock::now() - t).count();
