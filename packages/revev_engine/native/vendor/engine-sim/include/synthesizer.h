@@ -69,6 +69,7 @@ class Synthesizer {
         void destroy();
 
         int readAudioOutput(int samples, int16_t *buffer);
+        int readAudioOutput(int samples, float *buffer);
 
         void writeInput(const double *data);
         void endInputBlock();
@@ -87,6 +88,7 @@ class Synthesizer {
         double getInputSampleRate() const { return m_inputSampleRate; }
 
         int16_t renderAudio(int inputOffset);
+        float renderAudioFloat(int inputOffset);
 
         double getLevelerGain();
         AudioParameters getAudioParameters();
@@ -104,7 +106,7 @@ class Synthesizer {
         double m_inputWriteOffset;
         double m_lastInputSampleOffset;
 
-        RingBuffer<int16_t> m_audioBuffer;
+        RingBuffer<float> m_audioBuffer;
         int m_audioBufferSize;
 
         float m_inputSampleRate;

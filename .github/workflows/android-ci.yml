@@ -34,6 +34,8 @@ jobs:
         run: |
           c++ -std=c++17 -O2 packages/revev_engine/native/listening_mix_test.cpp -o /tmp/revev-listening-test
           /tmp/revev-listening-test
+          c++ -std=c++17 -O2 packages/revev_engine/native/output_limiter_test.cpp -o /tmp/revev-limiter-test
+          /tmp/revev-limiter-test
       - run: flutter build apk --debug
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
