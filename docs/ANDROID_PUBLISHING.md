@@ -58,6 +58,17 @@ in Play Console → Users and permissions. Google Cloud IAM alone is insufficien
 
 ## Subsequent releases
 
+The workflow has two jobs: **1. Authorize release request** and
+**2. Build and publish**. A green authorization job only approves the request;
+it does not mean an app was built or uploaded. Open the second job to follow
+compilation and **Upload internal release**. Its final summary distinguishes
+build-only, failed/cancelled, draft, and successful publishing, and links the
+signed bundle artifact when available. A draft is not available to testers.
+
+Node runtime deprecation warnings are not publishing errors. Look for a failed
+step or a cancelled job. If publishing fails after the bundle is saved, download
+that run's signed artifact for a manual Play upload rather than rebuilding it.
+
 Run **Play internal release** on `main`, check **publish**, and choose `draft` or
 `completed`. `draft` prepares a release in Play; `completed` makes it available
 on the internal track, subject to Play requirements.

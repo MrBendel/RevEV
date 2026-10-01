@@ -22,7 +22,8 @@ async function run({ permission = 'write', ready = 'true', event = 'issue_commen
     } }) },
   } }, { repo: { owner: 'MrBendel', repo: 'RevEV' }, actor: 'maintainer',
     sha: 'event-commit', eventName: event, ref, issue: { number: 2 } },
-  { setOutput: (key, value) => { outputs[key] = value; } },
+  { setOutput: (key, value) => { outputs[key] = value; },
+    notice: () => {}, summary: { addRaw: () => ({ write: async () => {} }) } },
   { env: { PLAY_READY: ready, PUBLISH: publish, RELEASE_STATUS: 'draft' } });
   return outputs;
 }

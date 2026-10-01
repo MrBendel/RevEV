@@ -1,4 +1,5 @@
 name: Play internal release
+run-name: Play internal release · ${{ github.event_name == 'issue_comment' && format('PR #{0}', github.event.issue.number) || (inputs.publish && 'publish' || 'build only') }} · @${{ github.actor }}
 on:
   workflow_dispatch:
     inputs:
@@ -20,6 +21,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   authorize:
+    name: 1. Authorize release request
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.issue.pull_request &&
@@ -33,7 +35,8 @@ jobs:
       publish: ${{ steps.request.outputs.publish }}
       status: ${{ steps.request.outputs.status }}
     steps:
-      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+      - name: Validate request and select source
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         id: request
         env:
           PUBLISH: ${{ inputs.publish }}
@@ -76,7 +79,14 @@ jobs:
             core.setOutput('ref', ref);
             core.setOutput('publish', String(publish));
             core.setOutput('status', status);
+            core.notice('Authorization passed. The signed build and Play upload run in the separate "2. Build and publish" job.');
+            await core.summary.addRaw(
+              `## Release request authorized\n\nSource: \`${ref}\`\n\n` +
+              (publish ? `Destination: Play internal testing (${status}).\n\n` : 'Build only: no Play upload requested.\n\n') +
+              'This job has not built or uploaded an app. Open **2. Build and publish** for progress and the final result.\n'
+            ).write();
   release:
+    name: 2. Build and publish
     needs: authorize
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -104,6 +114,7 @@ jobs:
       - run: flutter analyze
       - run: flutter test
       - name: Configure upload signing
+        id: signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -119,12 +130,16 @@ jobs:
           source_commit=$(git rev-parse HEAD)
           echo "Built commit $source_commit with version code $code" >> "$GITHUB_STEP_SUMMARY"
           jarsigner -verify build/app/outputs/bundle/release/app-release.aab
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - name: Save signed bundle for manual recovery
+        id: artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: revev-play-${{ steps.bundle.outputs.code }}
           path: build/app/outputs/bundle/release/app-release.aab
           retention-days: 14
+          if-no-files-found: error
       - name: Upload internal release
+        id: publish
         if: needs.authorize.outputs.publish == 'true'
         uses: r0adkll/upload-google-play@eb49699984a39f23558439581660aa6f088acfd6 # v1
         with:
@@ -134,3 +149,37 @@ jobs:
           track: internal
           status: ${{ needs.authorize.outputs.status }}
           releaseName: RevEV internal ${{ steps.bundle.outputs.code }}
+      - name: Report build and publishing outcome
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          BUILD_OUTCOME: ${{ steps.bundle.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.publish.outcome }}
+          PUBLISH_REQUESTED: ${{ needs.authorize.outputs.publish }}
+          RELEASE_STATUS: ${{ needs.authorize.outputs.status }}
+          VERSION_CODE: ${{ steps.bundle.outputs.code }}
+          ARTIFACT_URL: ${{ steps.artifact.outputs.artifact-url }}
+        shell: bash
+        run: |
+          {
+            echo '## Build and publish result'
+            echo
+            echo "Job: $JOB_STATUS. Signed bundle: $BUILD_OUTCOME. Play upload: $UPLOAD_OUTCOME."
+            echo
+            if [ "$UPLOAD_OUTCOME" = success ]; then
+              echo "Play accepted version $VERSION_CODE on the internal track with status $RELEASE_STATUS."
+              if [ "$RELEASE_STATUS" = draft ]; then
+                echo 'This is a draft, not a release available to testers.'
+              fi
+            elif [ "$PUBLISH_REQUESTED" != true ]; then
+              echo 'Build-only request: this run does not publish to Play.'
+            elif [ "$BUILD_OUTCOME" != success ]; then
+              echo 'No Play upload was attempted because the build did not finish successfully. Inspect the first failed or cancelled step above.'
+            else
+              echo 'Publishing did not complete. Inspect Upload internal release for the Play API error. The signed artifact can be uploaded manually without rebuilding.'
+            fi
+            if [ -n "$ARTIFACT_URL" ]; then
+              echo
+              echo "[Download signed bundle]($ARTIFACT_URL)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
