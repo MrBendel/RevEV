@@ -47,7 +47,7 @@ public:
         prevThrottle_ = throttle;
 
         // Target boost calculation: builds with RPM and throttle above 2000 RPM
-        const float rpmNorm = std::clamp((engineRpm - 2000.0f) / std::max(1000.0f, redline - 2000.0f), 0.0f, 1.0f);
+        const float rpmNorm = std::clamp((engineRpm - 2000.0f) / 2200.0f, 0.0f, 1.0f);
         if (bovActive_) {
             targetBoost_ = 0.0f;
             boost_ += (0.0f - boost_) * std::clamp(dt * 8.0f, 0.0f, 1.0f);
@@ -57,7 +57,7 @@ public:
             }
         } else {
             const float maxBoost = 1.10f; // ~1.1 bar (16 psi) peak boost
-            targetBoost_ = (throttle > 0.05f) ? (throttle * throttle * rpmNorm * maxBoost) : 0.0f;
+            targetBoost_ = (throttle > 0.05f) ? (std::pow(throttle, 1.2f) * rpmNorm * maxBoost) : 0.0f;
             const float rate = (targetBoost_ > boost_) ? 3.5f : 5.0f;
             boost_ += (targetBoost_ - boost_) * std::clamp(dt * rate, 0.0f, 1.0f);
         }
