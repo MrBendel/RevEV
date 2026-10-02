@@ -6,6 +6,7 @@
 #include "listening_mix.h"
 #include "output_limiter.h"
 #include "turbo_model.h"
+#include "audio_mixer.h"
 #include "piston_engine_simulator.h"
 #include <algorithm>
 #include <chrono>
@@ -134,8 +135,9 @@ void EngineRuntime::run() {
                 const float fade = fading ? std::max(0.0, 1.0 - (fadeElapsed + i / 44100.0) / 0.2) : 1.0;
                 if (!std::isfinite(pcm[i])) throw std::runtime_error("Non-finite engine audio");
                 const float turboSound = turboModel.processSample();
-                const float mixed = listeningMix.process(pcm[i] + turboSound, mode, strength, filteredThrottle);
-                buffer_[(w + i) % capacity] = limiter.process(mixed) * fade;
+                const float mixed = AudioMixer::mix(pcm[i], turboSound);
+                const float shaped = listeningMix.process(mixed, mode, strength, filteredThrottle);
+                buffer_[(w + i) % capacity] = limiter.process(AudioMixer::softCompress(shaped)) * fade;
             }
             write_.store(w + pcm.size(), std::memory_order_release);
             workMs_ = std::chrono::duration<float, std::milli>(clock::now() - t).count();
