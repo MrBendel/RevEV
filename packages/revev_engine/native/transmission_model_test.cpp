@@ -37,9 +37,9 @@ int main() {
     bool sawUpshift = false;
     float peakRpmIn1st = 0.0f;
 
-    for (int step = 0; step < 400; ++step) { // 4 seconds of hard acceleration
-        speed += 2.8f * 0.01f; // m/s
-        tx.update(0.01f, speed, 2.8f, 1.0f, 0.0f, 1);
+    for (int step = 0; step < 700; ++step) { // 7 seconds of hard acceleration (~0.35g)
+        speed += 3.5f * 0.01f; // m/s
+        tx.update(0.01f, speed, 3.5f, 1.0f, 0.0f, 1);
         if (tx.gear() == 1) {
             peakRpmIn1st = std::max(peakRpmIn1st, tx.targetRpm());
         }
