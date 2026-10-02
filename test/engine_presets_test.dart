@@ -49,11 +49,30 @@ void main() {
         tester.widget<InstrumentCluster>(find.byType(InstrumentCluster)).maxRpm,
         8000,
       );
+      expect(
+        tester
+            .widget<InstrumentCluster>(find.byType(InstrumentCluster))
+            .isTurbo,
+        isTrue,
+      );
+      expect(find.byKey(const Key('boost-gauge')), findsOneWidget);
+      expect(find.text('Turbocharged. Digitally alive.'), findsOneWidget);
       selector().onChanged!('porsche/911_carrera_32');
       await tester.pump();
       expect(
         tester.widget<InstrumentCluster>(find.byType(InstrumentCluster)).maxRpm,
         8000,
+      );
+      expect(
+        tester
+            .widget<InstrumentCluster>(find.byType(InstrumentCluster))
+            .isTurbo,
+        isFalse,
+      );
+      expect(find.byKey(const Key('boost-gauge')), findsNothing);
+      expect(
+        find.text('Naturally aspirated. Digitally alive.'),
+        findsOneWidget,
       );
       await tester.tap(find.byKey(const Key('start')));
       await tester.pump();
@@ -114,11 +133,17 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           channel,
-          (_) async => {'playing': true, 'stopping': true, 'rpm': 325},
+          (_) async => {
+            'playing': true,
+            'stopping': true,
+            'rpm': 325,
+            'boost': 0.85,
+          },
         );
     final stats = await RevevEngine().stats();
     expect(stats.stopping, isTrue);
     expect(stats.rpm, 325);
+    expect(stats.boost, 0.85);
     expect(stats.failed, isFalse);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);

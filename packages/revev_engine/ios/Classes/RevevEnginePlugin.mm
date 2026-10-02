@@ -93,7 +93,8 @@
         if (_runtime->failed() || _runtime->finished()) [self stop];
         result(@{@"rpm": @(_runtime->rpm()), @"workMs": @(_runtime->workMs()),
             @"underruns": @(_runtime->underruns()), @"failed": @(_runtime->failed()), @"playing": @(_playing),
-            @"stopping": @(_playing && _runtime->stopping())});
+            @"stopping": @(_playing && _runtime->stopping()),
+            @"boost": @(_runtime->boost())});
     } else result(FlutterMethodNotImplemented);
 }
 - (void)dealloc {

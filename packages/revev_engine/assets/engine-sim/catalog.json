@@ -3,48 +3,56 @@
     "id": "porsche/911_carrera_32",
     "name": "Porsche 911 Carrera 3.2 (approx.)",
     "entry": "entries/porsche/911_carrera_32.mr",
-    "maxRpm": 8000
+    "maxRpm": 8000,
+    "turbo": false
   },
   {
     "id": "porsche/911_turbo_33",
     "name": "Porsche 911 Turbo 3.3 (approx.)",
     "entry": "entries/porsche/911_turbo_33.mr",
-    "maxRpm": 8000
+    "maxRpm": 8000,
+    "turbo": true
   },
   {
     "id": "atg-video-1/05_honda_vtec",
     "name": "Honda B18C5 [VTEC, I4]",
     "entry": "entries/atg-video-1/05_honda_vtec.mr",
-    "maxRpm": 12000
+    "maxRpm": 12000,
+    "turbo": false
   },
   {
     "id": "atg-video-2/02_subaru_ej25_uh",
     "name": "Subaru EJ25 \u00b7 Unequal headers",
     "entry": "entries/atg-video-2/02_subaru_ej25_uh.mr",
-    "maxRpm": 8000
+    "maxRpm": 8000,
+    "turbo": false
   },
   {
     "id": "atg-video-2/07_gm_ls",
     "name": "GM LS",
     "entry": "entries/atg-video-2/07_gm_ls.mr",
-    "maxRpm": 8000
+    "maxRpm": 8000,
+    "turbo": false
   },
   {
     "id": "atg-video-2/08_ferrari_f136_v8",
     "name": "Ferrari F136",
     "entry": "entries/atg-video-2/08_ferrari_f136_v8.mr",
-    "maxRpm": 12000
+    "maxRpm": 12000,
+    "turbo": false
   },
   {
     "id": "atg-video-2/03_2jz",
     "name": "2JZ [I6]",
     "entry": "entries/atg-video-2/03_2jz.mr",
-    "maxRpm": 8000
+    "maxRpm": 8000,
+    "turbo": true
   },
   {
     "id": "atg-video-2/10_lfa_v10",
     "name": "1LR-GUE [V10]",
     "entry": "entries/atg-video-2/10_lfa_v10.mr",
-    "maxRpm": 12000
+    "maxRpm": 12000,
+    "turbo": false
   }
 ]

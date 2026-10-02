@@ -16,7 +16,9 @@ void main() {
 
   testWidgets('getPlatformVersion test', (WidgetTester tester) async {
     final RevevEngine plugin = RevevEngine();
-    final String? version = await plugin.stats().then((s) => 'Engine: ${s.rpm} RPM');
+    final String? version = await plugin.stats().then(
+      (s) => 'Engine: ${s.rpm} RPM',
+    );
     // The version string depends on the host platform running the test, so
     // just assert that some non-empty string is returned.
     expect(version?.isNotEmpty, true);

@@ -81,6 +81,7 @@ class DebugSession {
     'durationSeconds': elapsed.inMilliseconds / 1000,
     'samples': samples,
     'lastRpm': latest.rpm,
+    'lastBoost': latest.boost,
     'lastWorkMs': latest.workMs,
     'sampledAverageMs': averageMs,
     'sampledPeakMs': peakMs,

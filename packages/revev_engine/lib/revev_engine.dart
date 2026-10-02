@@ -19,8 +19,9 @@ class EngineStats {
     this.playing = false,
     this.failed = false,
     this.stopping = false,
+    this.boost = 0.0,
   });
-  final double rpm, workMs;
+  final double rpm, workMs, boost;
   final int underruns;
   final bool playing, failed, stopping;
 }
@@ -47,6 +48,7 @@ class RevevEngine {
       playing: data['playing'] == true,
       failed: data['failed'] == true,
       stopping: data['stopping'] == true,
+      boost: (data['boost'] as num? ?? 0).toDouble(),
     );
   }
 }

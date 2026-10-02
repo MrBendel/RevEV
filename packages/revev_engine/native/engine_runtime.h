@@ -27,6 +27,7 @@ public:
     }
     void render(float *out, int frames);
     float rpm() const { return rpm_.load(); }
+    float boost() const { return boost_.load(); }
     float workMs() const { return workMs_.load(); }
     uint32_t underruns() const { return underruns_.load(); }
     bool failed() const { return failed_.load(); }
@@ -34,12 +35,13 @@ private:
     void run();
     std::array<float, capacity> buffer_{};
     std::atomic<uint32_t> read_{0}, write_{0}, underruns_{0};
-    std::atomic<float> throttle_{0}, volume_{0.15f}, rpm_{0}, workMs_{0};
+    std::atomic<float> throttle_{0}, volume_{0.15f}, rpm_{0}, workMs_{0}, boost_{0};
     std::atomic<bool> running_{false}, failed_{false};
     std::atomic<int> listeningMode_{0};
     std::atomic<float> rumbleStrength_{0.5f};
     std::atomic<bool> stopping_{false}, done_{false};
     std::string assetRoot_, presetEntry_;
+    bool isTurbo_ = false;
     float gain_ = 0; // audio-consumer owned; reset only while callback stopped
     std::thread worker_;
 };
