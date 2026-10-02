@@ -2,18 +2,22 @@
 #pragma once
 #include <string>
 #include <stdexcept>
-struct PresetEntry { const char *id; const char *name; const char *entry; };
+struct PresetEntry { const char *id; const char *name; const char *entry; bool isTurbo; };
 inline constexpr PresetEntry enginePresets[] = {
-    {"porsche/911_carrera_32", "Porsche 911 Carrera 3.2 (approx.)", "entries/porsche/911_carrera_32.mr"},
-    {"porsche/911_turbo_33", "Porsche 911 Turbo 3.3 (approx.)", "entries/porsche/911_turbo_33.mr"},
-    {"atg-video-1/05_honda_vtec", "Honda B18C5 [VTEC, I4]", "entries/atg-video-1/05_honda_vtec.mr"},
-    {"atg-video-2/02_subaru_ej25_uh", "Subaru EJ25 \u00b7 Unequal headers", "entries/atg-video-2/02_subaru_ej25_uh.mr"},
-    {"atg-video-2/07_gm_ls", "GM LS", "entries/atg-video-2/07_gm_ls.mr"},
-    {"atg-video-2/08_ferrari_f136_v8", "Ferrari F136", "entries/atg-video-2/08_ferrari_f136_v8.mr"},
-    {"atg-video-2/03_2jz", "2JZ [I6]", "entries/atg-video-2/03_2jz.mr"},
-    {"atg-video-2/10_lfa_v10", "1LR-GUE [V10]", "entries/atg-video-2/10_lfa_v10.mr"},
+    {"porsche/911_carrera_32", "Porsche 911 Carrera 3.2 (approx.)", "entries/porsche/911_carrera_32.mr", false},
+    {"porsche/911_turbo_33", "Porsche 911 Turbo 3.3 (approx.)", "entries/porsche/911_turbo_33.mr", true},
+    {"atg-video-1/05_honda_vtec", "Honda B18C5 [VTEC, I4]", "entries/atg-video-1/05_honda_vtec.mr", false},
+    {"atg-video-2/02_subaru_ej25_uh", "Subaru EJ25 \u00b7 Unequal headers", "entries/atg-video-2/02_subaru_ej25_uh.mr", false},
+    {"atg-video-2/07_gm_ls", "GM LS", "entries/atg-video-2/07_gm_ls.mr", false},
+    {"atg-video-2/08_ferrari_f136_v8", "Ferrari F136", "entries/atg-video-2/08_ferrari_f136_v8.mr", false},
+    {"atg-video-2/03_2jz", "2JZ [I6]", "entries/atg-video-2/03_2jz.mr", true},
+    {"atg-video-2/10_lfa_v10", "1LR-GUE [V10]", "entries/atg-video-2/10_lfa_v10.mr", false},
 };
 inline std::string presetEntry(const std::string &id) {
     for (const auto &preset : enginePresets) if (id == preset.id) return preset.entry;
     throw std::invalid_argument("Unknown bundled engine");
+}
+inline bool presetIsTurbo(const std::string &id) {
+    for (const auto &preset : enginePresets) if (id == preset.id) return preset.isTurbo;
+    return false;
 }

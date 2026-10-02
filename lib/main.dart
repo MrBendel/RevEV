@@ -139,6 +139,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                     rpm: _stats.rpm,
                     workMs: _stats.workMs,
                     underruns: _stats.underruns,
+                    boost: _stats.boost,
                   );
             if (immediate) {
               _finishDebug('Stopped');
@@ -461,54 +462,72 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                           },
                   ),
                   const SizedBox(height: 12),
-                  InstrumentCluster(
-                    rpm: _stats.rpm,
-                    maxRpm: enginePresets
-                        .firstWhere((p) => p.id == _preset)
-                        .maxRpm,
-                    throttle: _throttle,
-                    volume: _volume,
-                    running: _stats.playing,
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 22,
-                        height: 1,
-                        color: const Color(0xff635b4e),
-                      ),
-                      Flexible(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 13),
-                          child: FittedBox(
+                  Builder(
+                    builder: (context) {
+                      final activePreset = enginePresets.firstWhere(
+                        (p) => p.id == _preset,
+                        orElse: () => enginePresets.first,
+                      );
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          InstrumentCluster(
+                            rpm: _stats.rpm,
+                            maxRpm: activePreset.maxRpm,
+                            throttle: _throttle,
+                            volume: _volume,
+                            running: _stats.playing,
+                            isTurbo: activePreset.isTurbo,
+                            boost: _stats.boost,
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: 22,
+                                height: 1,
+                                color: const Color(0xff635b4e),
+                              ),
+                              Flexible(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 13,
+                                  ),
+                                  child: FittedBox(
+                                    child: Text(
+                                      activePreset.name,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        letterSpacing: 2,
+                                        color: ivory,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                width: 22,
+                                height: 1,
+                                color: const Color(0xff635b4e),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 7),
+                          Center(
                             child: Text(
-                              enginePresets
-                                  .firstWhere((p) => p.id == _preset)
-                                  .name,
+                              activePreset.isTurbo
+                                  ? 'Turbocharged. Digitally alive.'
+                                  : 'Naturally aspirated. Digitally alive.',
                               style: const TextStyle(
-                                fontSize: 12,
-                                letterSpacing: 2,
-                                color: ivory,
+                                fontSize: 11,
+                                color: leatherMuted,
                               ),
                             ),
                           ),
-                        ),
-                      ),
-                      Container(
-                        width: 22,
-                        height: 1,
-                        color: const Color(0xff635b4e),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 7),
-                  const Center(
-                    child: Text(
-                      'Naturally aspirated. Digitally alive.',
-                      style: TextStyle(fontSize: 11, color: leatherMuted),
-                    ),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 24),
                   Center(

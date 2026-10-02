@@ -95,7 +95,8 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 val s = nativeStats()
                 if (s[3] != 0.0 || s[4] != 0.0) stop()
                 result.success(mapOf("rpm" to s[0], "workMs" to s[1], "underruns" to s[2],
-                    "failed" to (s[3] != 0.0), "playing" to playing, "stopping" to (playing && s[5] != 0.0)))
+                    "failed" to (s[3] != 0.0), "playing" to playing, "stopping" to (playing && s[5] != 0.0),
+                    "boost" to (if (s.size > 6) s[6] else 0.0)))
             }
             else -> result.notImplemented()
         }

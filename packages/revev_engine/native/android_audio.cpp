@@ -67,8 +67,9 @@ extern "C" JNIEXPORT jdoubleArray JNICALL
 Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeStats(JNIEnv *env, jobject) {
     const double stats[] = {engine.rpm(), engine.workMs(), static_cast<double>(engine.underruns()),
         static_cast<double>(engine.failed() || disconnected.load()),
-        static_cast<double>(engine.finished()), static_cast<double>(engine.stopping())};
-    auto out = env->NewDoubleArray(6);
-    env->SetDoubleArrayRegion(out, 0, 6, stats);
+        static_cast<double>(engine.finished()), static_cast<double>(engine.stopping()),
+        static_cast<double>(engine.boost())};
+    auto out = env->NewDoubleArray(7);
+    env->SetDoubleArrayRegion(out, 0, 7, stats);
     return out;
 }

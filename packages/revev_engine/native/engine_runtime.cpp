@@ -5,6 +5,7 @@
 #include "exhaust_response.h"
 #include "listening_mix.h"
 #include "output_limiter.h"
+#include "turbo_model.h"
 #include "piston_engine_simulator.h"
 #include <algorithm>
 #include <chrono>
@@ -24,15 +25,16 @@ public:
 void EngineRuntime::start(const std::string &root, const std::string &preset) {
     const auto entry = presetEntry(preset);
     if (running_.exchange(true)) return;
-    assetRoot_ = root; presetEntry_ = entry;
+    assetRoot_ = root; presetEntry_ = entry; isTurbo_ = presetIsTurbo(preset);
     stopping_ = false; done_ = false; workMs_ = 0;
-    read_ = 0; write_ = 0; underruns_ = 0; rpm_ = 0; failed_ = false; gain_ = 0;
+    read_ = 0; write_ = 0; underruns_ = 0; rpm_ = 0; boost_ = 0; failed_ = false; gain_ = 0;
     worker_ = std::thread(&EngineRuntime::run, this);
 }
 void EngineRuntime::stop() {
     running_ = false;
     if (worker_.joinable()) worker_.join();
     rpm_ = 0;
+    boost_ = 0;
 }
 void EngineRuntime::setThrottle(float v) {
     if (std::isfinite(v)) throttle_ = std::clamp(v, 0.0f, 1.0f);
@@ -93,6 +95,8 @@ void EngineRuntime::run() {
         std::array<float, 441> pcm{};
         ListeningMix listeningMix;
         OutputLimiter limiter;
+        TurboModel turboModel;
+        turboModel.setEnabled(isTurbo_);
         while (running_) {
             auto w = write_.load(std::memory_order_relaxed);
             if (w - read_.load(std::memory_order_acquire) >= 1323) {
@@ -120,6 +124,8 @@ void EngineRuntime::run() {
             const float rpm = static_cast<float>(preset.engine->getRpm());
             if (!std::isfinite(rpm) || std::abs(rpm) > 40000) { failed_ = true; break; }
             rpm_ = std::max(0.0f, rpm);
+            turboModel.updatePhysics(0.01f, rpm, filteredThrottle, static_cast<float>(preset.engine->getRedline()));
+            boost_ = turboModel.boostBar();
             if (shuttingDown && ((shutdownElapsed > 0.3 && std::abs(rpm) < 60) || shutdownElapsed >= 8 ||
                 t - shutdownStarted >= std::chrono::seconds(8))) fading = true;
             const int mode = listeningMode_.load();
@@ -127,7 +133,8 @@ void EngineRuntime::run() {
             for (uint32_t i = 0; i < pcm.size(); ++i) {
                 const float fade = fading ? std::max(0.0, 1.0 - (fadeElapsed + i / 44100.0) / 0.2) : 1.0;
                 if (!std::isfinite(pcm[i])) throw std::runtime_error("Non-finite engine audio");
-                const float mixed = listeningMix.process(pcm[i], mode, strength, filteredThrottle);
+                const float turboSound = turboModel.processSample();
+                const float mixed = listeningMix.process(pcm[i] + turboSound, mode, strength, filteredThrottle);
                 buffer_[(w + i) % capacity] = limiter.process(mixed) * fade;
             }
             write_.store(w + pcm.size(), std::memory_order_release);

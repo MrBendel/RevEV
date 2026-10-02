@@ -91,23 +91,27 @@ class InstrumentCluster extends StatelessWidget {
     required this.volume,
     required this.running,
     this.maxRpm = 8000,
+    this.isTurbo = false,
+    this.boost = 0.0,
   });
-  final double rpm, throttle, volume, maxRpm;
-  final bool running;
+  final double rpm, throttle, volume, maxRpm, boost;
+  final bool running, isTurbo;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, box) {
       final width = box.maxWidth;
-      final main = width * 0.60;
-      final small = width * 0.32;
+      final main = width * (isTurbo ? 0.54 : 0.60);
+      final small = width * (isTurbo ? 0.28 : 0.32);
+      final boostSize = width * 0.30;
+      final clusterHeight = isTurbo ? main * 0.68 + boostSize + 16 : main + 20;
       return SizedBox(
-        height: main + 20,
+        height: clusterHeight,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
             Positioned(
               left: -4,
-              top: main * 0.52,
+              top: main * (isTurbo ? 0.46 : 0.52),
               width: small,
               height: small,
               child: AnalogGauge(
@@ -122,7 +126,7 @@ class InstrumentCluster extends StatelessWidget {
             ),
             Positioned(
               right: -4,
-              top: main * 0.52,
+              top: main * (isTurbo ? 0.46 : 0.52),
               width: small,
               height: small,
               child: AnalogGauge(
@@ -135,6 +139,25 @@ class InstrumentCluster extends StatelessWidget {
                 auxiliary: true,
               ),
             ),
+            if (isTurbo)
+              Positioned(
+                left: (width - boostSize) / 2,
+                top: main * 0.68,
+                width: boostSize,
+                height: boostSize,
+                child: AnalogGauge(
+                  key: const Key('boost-gauge'),
+                  value: boost.clamp(0.0, 1.5),
+                  max: 1.5,
+                  divisions: 3,
+                  label: 'BOOST',
+                  unit: 'bar',
+                  readout: running
+                      ? '${boost >= 0 ? '+' : ''}${boost.toStringAsFixed(2)}'
+                      : '0.00',
+                  auxiliary: true,
+                ),
+              ),
             Positioned(
               left: (width - main) / 2,
               top: 0,
@@ -147,7 +170,7 @@ class InstrumentCluster extends StatelessWidget {
                     ? (maxRpm / 2000).round()
                     : (maxRpm / 1000).round(),
                 label: 'RevEV',
-                unit: '1/min × 1000',
+                unit: '1/min \u00d7 1000',
                 readout: running ? rpm.round().toString() : 'READY',
               ),
             ),
@@ -266,9 +289,15 @@ class _GaugePainter extends CustomPainter {
         tick,
       );
       if (major) {
+        final tickVal = max * i / count;
+        final tickText = max <= 3.0
+            ? (tickVal == tickVal.roundToDouble()
+                  ? '${tickVal.toInt()}'
+                  : tickVal.toStringAsFixed(1))
+            : '${tickVal.round()}';
         _text(
           canvas,
-          '${(max * i / count).round()}',
+          tickText,
           point(a, r * 0.62),
           r * (auxiliary ? 0.155 : 0.19),
           const Color(0xff202322),
