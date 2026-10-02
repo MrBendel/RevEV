@@ -70,6 +70,10 @@ kotlin {
     }
 }
 
+dependencies {
+    implementation("androidx.car.app:app:1.4.0")
+}
+
 flutter {
     source = "../.."
 }

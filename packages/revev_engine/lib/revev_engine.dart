@@ -81,4 +81,38 @@ class RevevEngine {
       vehicleSpeed: (data['vehicleSpeed'] as num? ?? 0).toDouble(),
     );
   }
+
+  void setRemoteCommandHandler({
+    void Function(String preset)? onRemoteStart,
+    void Function()? onRemoteStop,
+    void Function(String preset)? onRemoteSetPreset,
+    void Function(DriveMode mode)? onRemoteSetDriveMode,
+    void Function(double aggressiveness)? onRemoteSetAggressiveness,
+  }) {
+    _channel.setMethodCallHandler((call) async {
+      switch (call.method) {
+        case 'onRemoteStart':
+          final preset = call.arguments?['preset'] as String? ?? 'porsche/911_carrera_32';
+          onRemoteStart?.call(preset);
+          break;
+        case 'onRemoteStop':
+          onRemoteStop?.call();
+          break;
+        case 'onRemoteSetPreset':
+          final preset = call.arguments?['preset'] as String?;
+          if (preset != null) onRemoteSetPreset?.call(preset);
+          break;
+        case 'onRemoteSetDriveMode':
+          final modeIndex = call.arguments?['driveMode'] as int?;
+          if (modeIndex != null && modeIndex >= 0 && modeIndex < DriveMode.values.length) {
+            onRemoteSetDriveMode?.call(DriveMode.values[modeIndex]);
+          }
+          break;
+        case 'onRemoteSetAggressiveness':
+          final aggr = (call.arguments?['aggressiveness'] as num?)?.toDouble();
+          if (aggr != null) onRemoteSetAggressiveness?.call(aggr);
+          break;
+      }
+    });
+  }
 }
