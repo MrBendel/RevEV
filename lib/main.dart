@@ -57,6 +57,11 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
   int _testGeneration = 0;
   bool _testing = false;
   String? _testPhase;
+  DriveMode _driveMode = DriveMode.manual;
+  double _shiftAggressiveness = 0.6;
+  double _simulatedSpeedKmh = 0.0;
+  double _lastSimSpeed = 0.0;
+  DateTime _lastSpeedTime = DateTime.now();
   EngineStats _stats = const EngineStats();
   String _preset = 'porsche/911_carrera_32';
   MountingPosition _mountingPosition = MountingPosition.trayTopForward;
@@ -75,6 +80,31 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
       const Duration(milliseconds: 150),
       (_) => _refresh(),
     );
+  }
+
+  Future<void> _sendDriveTelemetry() async {
+    final now = DateTime.now();
+    final dt = now.difference(_lastSpeedTime).inMilliseconds / 1000.0;
+    _lastSpeedTime = now;
+    double accel = 0.0;
+    if (_driveMode == DriveMode.simDrive) {
+      if (dt > 0.001) {
+        accel = ((_simulatedSpeedKmh - _lastSimSpeed) / 3.6) / dt;
+      }
+      _lastSimSpeed = _simulatedSpeedKmh;
+    }
+    final speedMps = _driveMode == DriveMode.simDrive
+        ? _simulatedSpeedKmh / 3.6
+        : 0.0;
+    try {
+      await _engine.driveTelemetry(
+        speedMps: speedMps,
+        accelMps2: accel,
+        aggressiveness: _shiftAggressiveness,
+        driveMode: _driveMode,
+        mountingPosition: _mountingPosition.name,
+      );
+    } catch (_) {}
   }
 
   Future<void> _refresh() async {
@@ -97,6 +127,9 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
             _debug.error = _error;
           }
         });
+        if (_stats.playing && _driveMode == DriveMode.simDrive) {
+          await _sendDriveTelemetry();
+        }
       }
     } catch (e) {
       if (mounted && session == _session && !_busy) {
@@ -158,6 +191,8 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
           ..start();
         _throttle = 0;
         await _sendListeningMix();
+        if (!mounted || session != _session) return;
+        await _sendDriveTelemetry();
         if (!mounted || session != _session) return;
         await _engine.controls(0, _volume);
         if (!mounted || session != _session) return;
@@ -423,9 +458,9 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                       color: leatherMuted,
                     ),
                   ),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 12),
                   const StitchLine(),
-                  const SizedBox(height: 27),
+                  const SizedBox(height: 14),
                   const Center(
                     child: Text(
                       'THE INSTRUMENT ROOM',
@@ -436,7 +471,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     key: const Key('engine-preset'),
                     initialValue: _preset,
@@ -461,7 +496,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                             if (value != null) setState(() => _preset = value);
                           },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   Builder(
                     builder: (context) {
                       final activePreset = enginePresets.firstWhere(
@@ -479,6 +514,10 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                             running: _stats.playing,
                             isTurbo: activePreset.isTurbo,
                             boost: _stats.boost,
+                            gear: _stats.gear,
+                            speedKmh: _driveMode == DriveMode.simDrive
+                                ? _simulatedSpeedKmh
+                                : _stats.speedKmh,
                           ),
                           const SizedBox(height: 4),
                           Row(
@@ -513,6 +552,62 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                               ),
                             ],
                           ),
+                          if (_stats.playing && _driveMode != DriveMode.manual)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8, bottom: 2),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xff242726),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: const Color(0xff5d5548),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      _stats.gear > 0
+                                          ? 'GEAR ${_stats.gear} / ${activePreset.gearCount}'
+                                          : 'NEUTRAL',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1.8,
+                                        color: ivory,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xff242726),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: const Color(0xff5d5548),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '${(_driveMode == DriveMode.simDrive ? _simulatedSpeedKmh * 0.621371 : _stats.speedMph).round()} MPH · ${(_driveMode == DriveMode.simDrive ? _simulatedSpeedKmh : _stats.speedKmh).round()} KM/H',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 1.2,
+                                        color: leatherMuted,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           const SizedBox(height: 7),
                           Center(
                             child: Text(
@@ -529,7 +624,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                       );
                     },
                   ),
-                  const SizedBox(height: 24),
+                   const SizedBox(height: 14),
                   Center(
                     child: Container(
                       padding: const EdgeInsets.all(5),
@@ -616,9 +711,181 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                         style: const TextStyle(color: Color(0xffffb49e)),
                       ),
                     ),
-                  const SizedBox(height: 26),
+                  const SizedBox(height: 12),
                   const StitchLine(),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 12),
+                  const Row(
+                    children: [
+                      Text(
+                        'DRIVE MODE',
+                        style: TextStyle(
+                          fontSize: 10,
+                          letterSpacing: 2,
+                          color: ivory,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  SegmentedButton<DriveMode>(
+                    key: const Key('drive-mode'),
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    segments: const [
+                      ButtonSegment(
+                        value: DriveMode.manual,
+                        label: Text('MANUAL REV'),
+                        icon: Icon(Icons.tune, size: 16),
+                      ),
+                      ButtonSegment(
+                        value: DriveMode.gpsDrive,
+                        label: Text('GPS DRIVE'),
+                        icon: Icon(Icons.speed, size: 16),
+                      ),
+                      ButtonSegment(
+                        value: DriveMode.simDrive,
+                        label: Text('SPEED SIM'),
+                        icon: Icon(Icons.sports_esports, size: 16),
+                      ),
+                    ],
+                    selected: {_driveMode},
+                    onSelectionChanged: _busy || _testing
+                        ? null
+                        : (set) {
+                            setState(() => _driveMode = set.first);
+                            _sendDriveTelemetry();
+                          },
+                  ),
+                  const SizedBox(height: 10),
+                  if (_driveMode != DriveMode.manual) ...[
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'SHIFT AGGRESSIVENESS',
+                            style: TextStyle(
+                              fontSize: 10,
+                              letterSpacing: 2,
+                              color: ivory,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          _shiftAggressiveness < 0.35
+                              ? 'ECO · ${(_shiftAggressiveness * 100).round()}%'
+                              : _shiftAggressiveness < 0.75
+                              ? 'SPORT · ${(_shiftAggressiveness * 100).round()}%'
+                              : 'RACE · ${(_shiftAggressiveness * 100).round()}%',
+                          style: const TextStyle(
+                            color: leatherMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 3,
+                        activeTrackColor: needleRed,
+                        thumbColor: ivory,
+                        inactiveTrackColor: const Color(0xff3c3934),
+                      ),
+                      child: Slider(
+                        key: const Key('shift-aggressiveness'),
+                        value: _shiftAggressiveness,
+                        onChanged: (v) {
+                          setState(() => _shiftAggressiveness = v);
+                          _sendDriveTelemetry();
+                        },
+                      ),
+                    ),
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('ECO', style: TextStyle(fontSize: 9, color: leatherMuted)),
+                        Text('SPORT', style: TextStyle(fontSize: 9, color: leatherMuted)),
+                        Text('RACE', style: TextStyle(fontSize: 9, color: leatherMuted)),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                  ],
+                  if (_driveMode == DriveMode.simDrive) ...[
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'SIMULATED SPEED',
+                            style: TextStyle(
+                              fontSize: 10,
+                              letterSpacing: 2,
+                              color: ivory,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '${(_simulatedSpeedKmh * 0.621371).round()} MPH · ${_simulatedSpeedKmh.round()} KM/H',
+                          style: const TextStyle(
+                            color: leatherMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 3,
+                        activeTrackColor: needleRed,
+                        thumbColor: ivory,
+                        inactiveTrackColor: const Color(0xff3c3934),
+                      ),
+                      child: Slider(
+                        key: const Key('sim-speed'),
+                        value: _simulatedSpeedKmh,
+                        max: 180.0,
+                        divisions: 36,
+                        onChanged: _stats.playing && !_stats.stopping && !_busy && !_testing
+                            ? (v) {
+                                setState(() => _simulatedSpeedKmh = v);
+                                _sendDriveTelemetry();
+                              }
+                            : null,
+                      ),
+                    ),
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('0 MPH', style: TextStyle(fontSize: 9, color: leatherMuted)),
+                        Text('55 MPH', style: TextStyle(fontSize: 9, color: leatherMuted)),
+                        Text('112 MPH', style: TextStyle(fontSize: 9, color: leatherMuted)),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                  ],
+                  if (_driveMode == DriveMode.gpsDrive) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xff22211f),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xff3f3c36)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.gps_fixed, size: 16, color: Color(0xffa5b889)),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Automatic transmission driven by phone GPS speed & accelerometer g-force.',
+                              style: TextStyle(fontSize: 11, color: leatherMuted),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                  ],
                   Row(
                     children: [
                       const Text(
@@ -684,7 +951,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 23),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
                       const Icon(
@@ -720,7 +987,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   DropdownButtonFormField<ListeningMode>(
                     key: const Key('listening-mode'),
                     initialValue: _listeningMode,
@@ -744,7 +1011,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                           },
                   ),
                   if (_listeningMode == ListeningMode.cabinRumble) ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     Text(
                       'Rumble strength · ${(_rumbleStrength * 100).round()}%',
                     ),
@@ -761,12 +1028,12 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                             ),
                     ),
                   ],
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   const Text(
                     'Compare at the same throttle and output. Best heard on headphones or car speakers.',
                     style: TextStyle(fontSize: 11, color: leatherMuted),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 10),
                   const Text(
                     'MANUAL SOUND TEST',
                     textAlign: TextAlign.center,
@@ -776,13 +1043,13 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                       color: leatherMuted,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   const Text(
                     'Pauses when you leave the app.',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 11, color: leatherMuted),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 10),
                   DebugDashboard(
                     session: _debug,
                     testPhase: _testPhase,

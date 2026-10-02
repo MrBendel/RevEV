@@ -93,9 +93,12 @@ class InstrumentCluster extends StatelessWidget {
     this.maxRpm = 8000,
     this.isTurbo = false,
     this.boost = 0.0,
+    this.gear = 0,
+    this.speedKmh = 0.0,
   });
-  final double rpm, throttle, volume, maxRpm, boost;
+  final double rpm, throttle, volume, maxRpm, boost, speedKmh;
   final bool running, isTurbo;
+  final int gear;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, box) {
@@ -172,6 +175,7 @@ class InstrumentCluster extends StatelessWidget {
                 label: 'RevEV',
                 unit: '1/min \u00d7 1000',
                 readout: running ? rpm.round().toString() : 'READY',
+                badge: running ? (gear > 0 ? 'D$gear' : 'N') : null,
               ),
             ),
           ],
@@ -191,11 +195,13 @@ class AnalogGauge extends StatelessWidget {
     required this.unit,
     required this.readout,
     this.auxiliary = false,
+    this.badge,
   });
   final double value, max;
   final int divisions;
   final String label, unit, readout;
   final bool auxiliary;
+  final String? badge;
   @override
   Widget build(BuildContext context) => Semantics(
     label: '$label: $readout $unit',
@@ -211,6 +217,7 @@ class AnalogGauge extends StatelessWidget {
           unit: unit,
           readout: readout,
           auxiliary: auxiliary,
+          badge: badge,
         ),
       ),
     ),
@@ -226,11 +233,13 @@ class _GaugePainter extends CustomPainter {
     required this.unit,
     required this.readout,
     required this.auxiliary,
+    this.badge,
   });
   final double value, max;
   final int divisions;
   final String label, unit, readout;
   final bool auxiliary;
+  final String? badge;
   @override
   void paint(Canvas canvas, Size size) {
     final c = size.center(Offset.zero);
@@ -339,6 +348,32 @@ class _GaugePainter extends CustomPainter {
       const Color(0xffd9b989),
       FontWeight.w500,
     );
+    if (badge != null) {
+      final badgeRect = Rect.fromCenter(
+        center: c + Offset(0, r * 0.35),
+        width: r * 0.32,
+        height: r * 0.15,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(badgeRect, Radius.circular(r * 0.04)),
+        Paint()..color = const Color(0xff161918),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(badgeRect, Radius.circular(r * 0.04)),
+        Paint()
+          ..color = const Color(0xff4a4539)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0,
+      );
+      _text(
+        canvas,
+        badge!,
+        badgeRect.center,
+        r * 0.10,
+        needleRed,
+        FontWeight.w700,
+      );
+    }
     final angle = start + sweep * (value / max).clamp(0, 1);
     canvas.save();
     canvas.translate(c.dx, c.dy);
@@ -389,5 +424,5 @@ class _GaugePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_GaugePainter old) =>
-      value != old.value || readout != old.readout;
+      value != old.value || readout != old.readout || badge != old.badge;
 }

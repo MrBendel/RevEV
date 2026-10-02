@@ -7,6 +7,7 @@
 #include "output_limiter.h"
 #include "turbo_model.h"
 #include "audio_mixer.h"
+#include "transmission_model.h"
 #include "piston_engine_simulator.h"
 #include <algorithm>
 #include <chrono>
@@ -26,8 +27,8 @@ public:
 void EngineRuntime::start(const std::string &root, const std::string &preset) {
     const auto entry = presetEntry(preset);
     if (running_.exchange(true)) return;
-    assetRoot_ = root; presetEntry_ = entry; isTurbo_ = presetIsTurbo(preset);
-    stopping_ = false; done_ = false; workMs_ = 0;
+    assetRoot_ = root; presetEntry_ = entry; presetId_ = preset; isTurbo_ = presetIsTurbo(preset);
+    stopping_ = false; done_ = false; workMs_ = 0; gear_ = 0;
     read_ = 0; write_ = 0; underruns_ = 0; rpm_ = 0; boost_ = 0; failed_ = false; gain_ = 0;
     worker_ = std::thread(&EngineRuntime::run, this);
 }
@@ -36,6 +37,9 @@ void EngineRuntime::stop() {
     if (worker_.joinable()) worker_.join();
     rpm_ = 0;
     boost_ = 0;
+    gear_ = 0;
+    speedMps_ = 0.0f;
+    accelMps2_ = 0.0f;
 }
 void EngineRuntime::setThrottle(float v) {
     if (std::isfinite(v)) throttle_ = std::clamp(v, 0.0f, 1.0f);
@@ -98,6 +102,16 @@ void EngineRuntime::run() {
         OutputLimiter limiter;
         TurboModel turboModel;
         turboModel.setEnabled(isTurbo_);
+        TransmissionModel transmissionModel;
+        try {
+            const auto &p = getPreset(presetId_);
+            transmissionModel.configure(p.gearCount, p.gearRatios, p.finalDrive,
+                static_cast<float>(preset.engine->getRedline()), 900.0, 0.31);
+        } catch (...) {
+            const double defRatios[] = {3.5, 2.06, 1.41, 1.07, 0.86};
+            transmissionModel.configure(5, defRatios, 3.44,
+                static_cast<float>(preset.engine->getRedline()), 900.0, 0.31);
+        }
         while (running_) {
             auto w = write_.load(std::memory_order_relaxed);
             if (w - read_.load(std::memory_order_acquire) >= 1323) {
@@ -108,9 +122,36 @@ void EngineRuntime::run() {
             const bool shuttingDown = stopping_.load();
             if (shuttingDown && shutdownStarted == clock::time_point{}) shutdownStarted = t;
             if (elapsed > 0.5 && preset.engine->getRpm() > 600) started = true;
-            const float targetThrottle = shuttingDown ? 0.0f :
-                std::max(throttle_.load(), !longCrank && !started && elapsed < crankTimeout ? 0.08f : 0.0f);
-            filteredThrottle += (targetThrottle - filteredThrottle) * 0.08f;
+
+            const int driveMode = driveMode_.load();
+            const float speed = speedMps_.load();
+            const float accel = accelMps2_.load();
+            const float aggr = aggressiveness_.load();
+            const float manualThr = throttle_.load();
+
+            transmissionModel.update(0.01f, speed, accel, aggr, manualThr, driveMode);
+            gear_ = transmissionModel.gear();
+
+            float targetThrottle = 0.0f;
+            if (shuttingDown) {
+                targetThrottle = 0.0f;
+                sim.m_dyno.m_enabled = false;
+            } else if (driveMode == 0) {
+                sim.m_dyno.m_enabled = false;
+                targetThrottle = std::max(manualThr, !longCrank && !started && elapsed < crankTimeout ? 0.08f : 0.0f);
+            } else {
+                if (!started || elapsed < 1.2) {
+                    sim.m_dyno.m_enabled = false;
+                    targetThrottle = !longCrank && !started && elapsed < crankTimeout ? 0.08f : 0.0f;
+                } else {
+                    sim.m_dyno.m_enabled = true;
+                    sim.m_dyno.m_hold = true;
+                    sim.m_dyno.m_rotationSpeed = units::rpm(transmissionModel.targetRpm());
+                    targetThrottle = transmissionModel.simulatedThrottle();
+                }
+            }
+
+            filteredThrottle += (targetThrottle - filteredThrottle) * (driveMode > 0 ? 0.15f : 0.08f);
             preset.engine->setSpeedControl(filteredThrottle);
             preset.engine->getIgnitionModule()->m_enabled = !shuttingDown;
             sim.m_starterMotor.m_enabled = !shuttingDown && (elapsed < 1.5 || (!started && elapsed < crankTimeout));
