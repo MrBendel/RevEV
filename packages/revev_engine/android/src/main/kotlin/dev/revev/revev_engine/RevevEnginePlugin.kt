@@ -18,7 +18,7 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
-class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, SensorEventListener, LocationListener {
+class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, SensorEventListener, LocationListener, EngineBridge.CommandHandler {
     private lateinit var channel: MethodChannel
     private lateinit var audioManager: AudioManager
     private var playing = false
@@ -54,6 +54,7 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
             ?: sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         channel = MethodChannel(binding.binaryMessenger, "revev_engine")
         channel.setMethodCallHandler(this)
+        EngineBridge.commandHandler = this
     }
 
     private fun prepareEngines(): String {
@@ -135,6 +136,7 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
         stopSensors()
         nativeStop()
         playing = false
+        EngineBridge.updateState { it.copy(playing = false, stopping = false, rpm = 0.0, gear = 0, vehicleSpeedMps = 0.0, boostBar = 0.0) }
         focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         focusRequest = null
     }
@@ -161,15 +163,20 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
                         return
                     }
                     playing = code == 0
-                    if (playing) result.success(null)
-                    else { stop(); result.error("audio_start", "Audio output could not start (code $code).", null) }
+                    if (playing) {
+                        val chosenPreset = call.argument<String>("preset") ?: "porsche/911_carrera_32"
+                        EngineBridge.updateState { it.copy(playing = true, stopping = false, failed = false, presetId = chosenPreset) }
+                        result.success(null)
+                    } else { stop(); result.error("audio_start", "Audio output could not start (code $code).", null) }
                 }
             }
             "stop" -> { stop(); result.success(null) }
             "shutdown" -> { if (playing) nativeShutdown(); result.success(null) }
             "controls" -> {
-                nativeControls((call.argument<Number>("throttle") ?: 0).toFloat(),
-                    (call.argument<Number>("volume") ?: 0.15).toFloat())
+                val throttle = (call.argument<Number>("throttle") ?: 0).toFloat()
+                val volume = (call.argument<Number>("volume") ?: 0.15).toFloat()
+                nativeControls(throttle, volume)
+                EngineBridge.updateState { it.copy(throttle = throttle) }
                 result.success(null)
             }
             "listeningMix" -> {
@@ -191,21 +198,37 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
                 }
 
                 nativeDriveTelemetry(currentSpeedMps, currentAccelMps2, currentAggressiveness, currentDriveMode)
+                EngineBridge.updateState { it.copy(driveMode = currentDriveMode, shiftAggressiveness = currentAggressiveness) }
                 result.success(null)
             }
             "stats" -> {
                 val s = nativeStats()
                 if (s[3] != 0.0 || s[4] != 0.0) stop()
+                val rpm = s[0]
+                val boost = if (s.size > 6) s[6] else 0.0
+                val gear = if (s.size > 7) s[7].toInt() else 0
+                val vehicleSpeed = if (s.size > 8) s[8] else 0.0
+                EngineBridge.updateState {
+                    it.copy(
+                        rpm = rpm,
+                        gear = gear,
+                        vehicleSpeedMps = vehicleSpeed,
+                        boostBar = boost,
+                        playing = playing,
+                        stopping = (playing && s[5] != 0.0),
+                        failed = (s[3] != 0.0)
+                    )
+                }
                 result.success(mapOf(
-                    "rpm" to s[0],
+                    "rpm" to rpm,
                     "workMs" to s[1],
                     "underruns" to s[2],
                     "failed" to (s[3] != 0.0),
                     "playing" to playing,
                     "stopping" to (playing && s[5] != 0.0),
-                    "boost" to (if (s.size > 6) s[6] else 0.0),
-                    "gear" to (if (s.size > 7) s[7].toInt() else 0),
-                    "vehicleSpeed" to (if (s.size > 8) s[8] else 0.0)
+                    "boost" to boost,
+                    "gear" to gear,
+                    "vehicleSpeed" to vehicleSpeed
                 ))
             }
             else -> result.notImplemented()
@@ -213,6 +236,39 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        if (EngineBridge.commandHandler == this) {
+            EngineBridge.commandHandler = null
+        }
         stop(); channel.setMethodCallHandler(null)
+    }
+
+    override fun onStartEngine(presetId: String?) {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            channel.invokeMethod("onRemoteStart", mapOf("preset" to (presetId ?: "porsche/911_carrera_32")))
+        }
+    }
+
+    override fun onStopEngine() {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            channel.invokeMethod("onRemoteStop", null)
+        }
+    }
+
+    override fun onSetPreset(presetId: String) {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            channel.invokeMethod("onRemoteSetPreset", mapOf("preset" to presetId))
+        }
+    }
+
+    override fun onSetDriveMode(mode: Int) {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            channel.invokeMethod("onRemoteSetDriveMode", mapOf("driveMode" to mode))
+        }
+    }
+
+    override fun onSetAggressiveness(aggressiveness: Float) {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            channel.invokeMethod("onRemoteSetAggressiveness", mapOf("aggressiveness" to aggressiveness))
+        }
     }
 }

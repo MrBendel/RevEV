@@ -76,6 +76,32 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _engine.setRemoteCommandHandler(
+      onRemoteStart: (preset) {
+        if (!_stats.playing && !_busy) {
+          setState(() => _preset = preset);
+          unawaited(_toggle());
+        }
+      },
+      onRemoteStop: () {
+        if (_stats.playing && !_busy) {
+          unawaited(_toggle(immediate: true));
+        }
+      },
+      onRemoteSetPreset: (preset) {
+        if (!_stats.playing && !_busy) {
+          setState(() => _preset = preset);
+        }
+      },
+      onRemoteSetDriveMode: (mode) {
+        setState(() => _driveMode = mode);
+        unawaited(_sendDriveTelemetry());
+      },
+      onRemoteSetAggressiveness: (aggr) {
+        setState(() => _shiftAggressiveness = aggr);
+        unawaited(_sendDriveTelemetry());
+      },
+    );
     _poll = Timer.periodic(
       const Duration(milliseconds: 150),
       (_) => _refresh(),
