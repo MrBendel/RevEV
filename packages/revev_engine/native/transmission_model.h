@@ -92,8 +92,19 @@ public:
             const float currentRatio = ratios_[gear_ - 1];
             const float currentGearRpm = calcDrivetrainRpm(speedKmh, currentRatio);
 
-            // 1. Upshift check
-            if (gear_ < gearCount_ && currentGearRpm >= shiftUpRpm) {
+            // 1. Upshift check (under load or steady cruising)
+            bool shouldUpshift = false;
+            if (gear_ < gearCount_) {
+                const float nextRatio = ratios_[gear_];
+                const float nextGearRpm = calcDrivetrainRpm(speedKmh, nextRatio);
+                const bool cruiseUpshift = (normAccel < 0.20f && accelMps2 >= -0.2f &&
+                                            nextGearRpm >= std::max(idleRpm_ * 1.5f, 1400.0f));
+                if (currentGearRpm >= shiftUpRpm || cruiseUpshift) {
+                    shouldUpshift = true;
+                }
+            }
+
+            if (shouldUpshift) {
                 gear_++;
                 isShifting_ = true;
                 shiftDirection_ = 1;
