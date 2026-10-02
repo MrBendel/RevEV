@@ -67,9 +67,9 @@ int main() {
 
     // 5. Deceleration to a stop:
     // When slowing down from 100 km/h to 0 km/h, downshifts sequentially to 1st gear and idles
-    for (int step = 0; step < 600; ++step) {
-        speed = std::max(0.0f, speed - 1.8f * 0.01f);
-        tx.update(0.01f, speed, -1.8f, 0.5f, 0.0f, 1);
+    for (int step = 0; step < 1200; ++step) {
+        speed = std::max(0.0f, speed - 2.5f * 0.01f);
+        tx.update(0.01f, speed, -2.5f, 0.5f, 0.0f, 1);
     }
     std::printf("After braking to stop: speed %.1f, gear: %d, RPM: %.1f\n", speed, tx.gear(), tx.targetRpm());
     require(tx.gear() == 1, "Braking did not downshift back to 1st gear");
