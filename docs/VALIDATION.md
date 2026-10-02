@@ -2,11 +2,12 @@
 
 ## Curated engine presets and 911 Turbo — 2026-10-01
 
-- Engine lineup refined to a curated 9-preset selection: Generic 2.0 L I4,
+- Engine lineup refined to a curated 8-preset car selection:
   Honda B18C5 VTEC, Subaru EJ25 (unequal-length headers), GM LS V8,
   Ferrari F136 V8, Toyota 2JZ I6, Lexus 1LR-GUE V10, and two Porsche flat-six
-  approximations (NA 911 Carrera 3.2 and Turbo 911 Turbo 3.3). Redundant V6 test
-  mules, duplicate Subarus, and secondary Audis/Chevrolets removed.
+  approximations (NA 911 Carrera 3.2 and Turbo 911 Turbo 3.3). Baseline generic
+  2.0 L I4, redundant V6 test mules, duplicate Subarus, and secondary Audis/Chevrolets removed.
+- Default preset initialized to `porsche/911_carrera_32`.
 - Porsche 911 Turbo 3.3 approximates the Type 930 turbo flat-six (97 x 74.4 mm,
   7.0:1 compression ratio, 91.6 cc chamber volume, turbo-adapted valve timing
   and boost-flow rates with mild exhaust reverb acoustics).

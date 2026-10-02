@@ -1,11 +1,5 @@
 [
   {
-    "id": "generic",
-    "name": "RevEV \u00b7 Generic 2.0 L I4",
-    "entry": null,
-    "maxRpm": 8000
-  },
-  {
     "id": "porsche/911_carrera_32",
     "name": "Porsche 911 Carrera 3.2 (approx.)",
     "entry": "entries/porsche/911_carrera_32.mr",

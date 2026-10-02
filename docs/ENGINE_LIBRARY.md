@@ -53,5 +53,5 @@ cylinder count and decodes every referenced exhaust response.
 and ignition-off completion. Without a selected preset it also exercises restart.
 Flutter tests cover selection forwarding, control locking during coast-down,
 diagnostic state and the automated test. The Android integration test starts the
-generic engine, revs, waits for coast-down, then switches to the Porsche 911 Turbo definition.
+Porsche 911 Carrera definition, revs, waits for coast-down, then switches to the Porsche 911 Turbo definition.
 iOS changes require a Mac build and device verification.

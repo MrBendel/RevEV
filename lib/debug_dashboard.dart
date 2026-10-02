@@ -12,7 +12,7 @@ class DebugSession {
   Duration elapsed = Duration.zero;
   String status = 'No session';
   String? error;
-  String preset = 'generic';
+  String preset = 'porsche/911_carrera_32';
   String mountingPosition = 'trayTopForward';
   final List<Map<String, Object>> listeningChanges = [];
   String testResult = 'Manual session';

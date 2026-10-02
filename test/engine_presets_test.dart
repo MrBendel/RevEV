@@ -41,7 +41,7 @@ void main() {
             .widget<DropdownButton<String>>(find.byType(DropdownButton<String>))
             .items!
             .length,
-        9,
+        8,
       );
       selector().onChanged!('porsche/911_turbo_33');
       await tester.pump();

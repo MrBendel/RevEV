@@ -6,7 +6,6 @@ class EnginePresetInfo {
 }
 
 const enginePresets = <EnginePresetInfo>[
-  EnginePresetInfo("generic", "RevEV \u00b7 Generic 2.0 L I4", 8000),
   EnginePresetInfo(
     "porsche/911_carrera_32",
     "Porsche 911 Carrera 3.2 (approx.)",

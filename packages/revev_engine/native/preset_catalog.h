@@ -4,7 +4,6 @@
 #include <stdexcept>
 struct PresetEntry { const char *id; const char *name; const char *entry; };
 inline constexpr PresetEntry enginePresets[] = {
-    {"generic", "RevEV \u00b7 Generic 2.0 L I4", ""},
     {"porsche/911_carrera_32", "Porsche 911 Carrera 3.2 (approx.)", "entries/porsche/911_carrera_32.mr"},
     {"porsche/911_turbo_33", "Porsche 911 Turbo 3.3 (approx.)", "entries/porsche/911_turbo_33.mr"},
     {"atg-video-1/05_honda_vtec", "Honda B18C5 [VTEC, I4]", "entries/atg-video-1/05_honda_vtec.mr"},
