@@ -86,7 +86,7 @@ void main() {
     final selector = tester.widget<DropdownButtonFormField<String>>(
       find.byKey(const Key('engine-preset')),
     );
-    selector.onChanged!('atg-video-1/03_harley_davidson_shovelhead');
+    selector.onChanged!('porsche/911_turbo_33');
     await tester.pump();
     await tester.scrollUntilVisible(find.byKey(const Key('start')), 250);
     await tester.tap(find.byKey(const Key('start')));

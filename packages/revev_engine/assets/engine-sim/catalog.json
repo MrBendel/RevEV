@@ -12,57 +12,21 @@
     "maxRpm": 8000
   },
   {
+    "id": "porsche/911_turbo_33",
+    "name": "Porsche 911 Turbo 3.3 (approx.)",
+    "entry": "entries/porsche/911_turbo_33.mr",
+    "maxRpm": 8000
+  },
+  {
     "id": "atg-video-1/05_honda_vtec",
     "name": "Honda B18C5 [VTEC, I4]",
     "entry": "entries/atg-video-1/05_honda_vtec.mr",
     "maxRpm": 12000
   },
   {
-    "id": "atg-video-1/06_subaru_ej25",
-    "name": "Subaru EJ25 (video 1)",
-    "entry": "entries/atg-video-1/06_subaru_ej25.mr",
-    "maxRpm": 8000
-  },
-  {
-    "id": "atg-video-1/07_audi_i5",
-    "name": "Audi 2.3 I5 (video 1)",
-    "entry": "entries/atg-video-1/07_audi_i5.mr",
-    "maxRpm": 8000
-  },
-  {
-    "id": "atg-video-2/01_subaru_ej25_eh",
-    "name": "Subaru EJ25 \u00b7 Equal headers",
-    "entry": "entries/atg-video-2/01_subaru_ej25_eh.mr",
-    "maxRpm": 8000
-  },
-  {
     "id": "atg-video-2/02_subaru_ej25_uh",
     "name": "Subaru EJ25 \u00b7 Unequal headers",
     "entry": "entries/atg-video-2/02_subaru_ej25_uh.mr",
-    "maxRpm": 8000
-  },
-  {
-    "id": "atg-video-2/03_2jz",
-    "name": "2JZ [I6]",
-    "entry": "entries/atg-video-2/03_2jz.mr",
-    "maxRpm": 8000
-  },
-  {
-    "id": "atg-video-2/04_60_degree_v6",
-    "name": "Generic 60 deg. V6",
-    "entry": "entries/atg-video-2/04_60_degree_v6.mr",
-    "maxRpm": 8000
-  },
-  {
-    "id": "atg-video-2/05_odd_fire_v6",
-    "name": "Generic Odd-fire V6 (Common Rod Jnl.)",
-    "entry": "entries/atg-video-2/05_odd_fire_v6.mr",
-    "maxRpm": 8000
-  },
-  {
-    "id": "atg-video-2/06_even_fire_v6",
-    "name": "Generic Even-fire V6 (Split Rod Jnl.)",
-    "entry": "entries/atg-video-2/06_even_fire_v6.mr",
     "maxRpm": 8000
   },
   {
@@ -78,33 +42,15 @@
     "maxRpm": 12000
   },
   {
+    "id": "atg-video-2/03_2jz",
+    "name": "2JZ [I6]",
+    "entry": "entries/atg-video-2/03_2jz.mr",
+    "maxRpm": 8000
+  },
+  {
     "id": "atg-video-2/10_lfa_v10",
     "name": "1LR-GUE [V10]",
     "entry": "entries/atg-video-2/10_lfa_v10.mr",
     "maxRpm": 12000
-  },
-  {
-    "id": "atg-video-2/12_ferrari_412_t2",
-    "name": "Ferrari 412 T2 [V12]",
-    "entry": "entries/atg-video-2/12_ferrari_412_t2.mr",
-    "maxRpm": 22000
-  },
-  {
-    "id": "audi/i5",
-    "name": "Audi 2.3 I5 (original)",
-    "entry": "entries/audi/i5.mr",
-    "maxRpm": 10000
-  },
-  {
-    "id": "bmw/M52B28",
-    "name": "BMW M52B28",
-    "entry": "entries/bmw/M52B28.mr",
-    "maxRpm": 10000
-  },
-  {
-    "id": "chevrolet/engine_03_for_e1",
-    "name": "Chevrolet 454 (E1)",
-    "entry": "entries/chevrolet/engine_03_for_e1.mr",
-    "maxRpm": 8000
   }
 ]

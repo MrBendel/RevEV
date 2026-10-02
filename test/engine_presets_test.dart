@@ -41,7 +41,13 @@ void main() {
             .widget<DropdownButton<String>>(find.byType(DropdownButton<String>))
             .items!
             .length,
-        18,
+        9,
+      );
+      selector().onChanged!('porsche/911_turbo_33');
+      await tester.pump();
+      expect(
+        tester.widget<InstrumentCluster>(find.byType(InstrumentCluster)).maxRpm,
+        8000,
       );
       selector().onChanged!('porsche/911_carrera_32');
       await tester.pump();
