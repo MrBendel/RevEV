@@ -2,20 +2,40 @@
 #pragma once
 #include <string>
 #include <stdexcept>
-struct PresetEntry { const char *id; const char *name; const char *entry; bool isTurbo; };
-inline constexpr PresetEntry enginePresets[] = {
-    {"porsche/911_carrera_32", "Porsche 911 Carrera 3.2 (approx.)", "entries/porsche/911_carrera_32.mr", false},
-    {"porsche/911_turbo_33", "Porsche 911 Turbo 3.3 (approx.)", "entries/porsche/911_turbo_33.mr", true},
-    {"atg-video-1/05_honda_vtec", "Honda B18C5 [VTEC, I4]", "entries/atg-video-1/05_honda_vtec.mr", false},
-    {"atg-video-2/02_subaru_ej25_uh", "Subaru EJ25 \u00b7 Unequal headers", "entries/atg-video-2/02_subaru_ej25_uh.mr", false},
-    {"atg-video-2/07_gm_ls", "GM LS", "entries/atg-video-2/07_gm_ls.mr", false},
-    {"atg-video-2/08_ferrari_f136_v8", "Ferrari F136", "entries/atg-video-2/08_ferrari_f136_v8.mr", false},
-    {"atg-video-2/03_2jz", "2JZ [I6]", "entries/atg-video-2/03_2jz.mr", true},
-    {"atg-video-2/10_lfa_v10", "1LR-GUE [V10]", "entries/atg-video-2/10_lfa_v10.mr", false},
+struct PresetEntry {
+    const char *id;
+    const char *name;
+    const char *entry;
+    bool isTurbo;
+    int gearCount;
+    const double *gearRatios;
+    double finalDrive;
 };
-inline std::string presetEntry(const std::string &id) {
-    for (const auto &preset : enginePresets) if (id == preset.id) return preset.entry;
+inline constexpr double ratios_porsche_911_carrera_32[] = {3.5, 2.06, 1.41, 1.07, 0.86};
+inline constexpr double ratios_porsche_911_turbo_33[] = {3.15, 1.79, 1.21, 0.89};
+inline constexpr double ratios_atg_video_1_05_honda_vtec[] = {3.23, 2.11, 1.46, 1.11, 0.85};
+inline constexpr double ratios_atg_video_2_02_subaru_ej25_uh[] = {3.64, 2.38, 1.76, 1.35, 1.06, 0.83};
+inline constexpr double ratios_atg_video_2_07_gm_ls[] = {2.66, 1.78, 1.3, 1.0, 0.74, 0.5};
+inline constexpr double ratios_atg_video_2_08_ferrari_f136_v8[] = {3.08, 2.19, 1.63, 1.29, 1.03, 0.84, 0.68};
+inline constexpr double ratios_atg_video_2_03_2jz[] = {3.83, 2.36, 1.69, 1.31, 1.0, 0.79};
+inline constexpr double ratios_atg_video_2_10_lfa_v10[] = {3.23, 2.19, 1.61, 1.26, 1.03, 0.8};
+
+inline constexpr PresetEntry enginePresets[] = {
+    {"porsche/911_carrera_32", "Porsche 911 Carrera 3.2 (approx.)", "entries/porsche/911_carrera_32.mr", false, 5, ratios_porsche_911_carrera_32, 3.44},
+    {"porsche/911_turbo_33", "Porsche 911 Turbo 3.3 (approx.)", "entries/porsche/911_turbo_33.mr", true, 4, ratios_porsche_911_turbo_33, 3.44},
+    {"atg-video-1/05_honda_vtec", "Honda B18C5 [VTEC, I4]", "entries/atg-video-1/05_honda_vtec.mr", false, 5, ratios_atg_video_1_05_honda_vtec, 4.4},
+    {"atg-video-2/02_subaru_ej25_uh", "Subaru EJ25 \u00b7 Unequal headers", "entries/atg-video-2/02_subaru_ej25_uh.mr", false, 6, ratios_atg_video_2_02_subaru_ej25_uh, 3.9},
+    {"atg-video-2/07_gm_ls", "GM LS", "entries/atg-video-2/07_gm_ls.mr", false, 6, ratios_atg_video_2_07_gm_ls, 3.42},
+    {"atg-video-2/08_ferrari_f136_v8", "Ferrari F136", "entries/atg-video-2/08_ferrari_f136_v8.mr", false, 7, ratios_atg_video_2_08_ferrari_f136_v8, 4.5},
+    {"atg-video-2/03_2jz", "2JZ [I6]", "entries/atg-video-2/03_2jz.mr", true, 6, ratios_atg_video_2_03_2jz, 3.27},
+    {"atg-video-2/10_lfa_v10", "1LR-GUE [V10]", "entries/atg-video-2/10_lfa_v10.mr", false, 6, ratios_atg_video_2_10_lfa_v10, 3.45},
+};
+inline const PresetEntry &getPreset(const std::string &id) {
+    for (const auto &preset : enginePresets) if (id == preset.id) return preset;
     throw std::invalid_argument("Unknown bundled engine");
+}
+inline std::string presetEntry(const std::string &id) {
+    return getPreset(id).entry;
 }
 inline bool presetIsTurbo(const std::string &id) {
     for (const auto &preset : enginePresets) if (id == preset.id) return preset.isTurbo;

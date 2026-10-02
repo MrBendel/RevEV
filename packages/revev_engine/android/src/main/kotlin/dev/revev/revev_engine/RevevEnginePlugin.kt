@@ -1,33 +1,61 @@
 package dev.revev.revev_engine
 
 import android.content.Context
+import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.os.Bundle
 import java.io.File
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
-class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
+class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, SensorEventListener, LocationListener {
     private lateinit var channel: MethodChannel
     private lateinit var audioManager: AudioManager
     private var playing = false
     private lateinit var context: Context
     private var focusRequest: AudioFocusRequest? = null
+
+    private var locationManager: LocationManager? = null
+    private var sensorManager: SensorManager? = null
+    private var accelSensor: Sensor? = null
+    private var sensorsActive = false
+
+    private var currentSpeedMps = 0.0f
+    private var currentAccelMps2 = 0.0f
+    private var currentAggressiveness = 0.5f
+    private var currentDriveMode = 0
+    private var mountingPositionName = "trayTopForward"
+
     private external fun nativeStart(root: String, preset: String): Int
     private external fun nativeStop()
     private external fun nativeShutdown()
     private external fun nativeControls(throttle: Float, volume: Float)
     private external fun nativeListeningMix(mode: Int, strength: Float)
+    private external fun nativeDriveTelemetry(speedMps: Float, accelMps2: Float, aggressiveness: Float, driveMode: Int)
     private external fun nativeStats(): DoubleArray
+
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         System.loadLibrary("revev_audio")
         context = binding.applicationContext
         audioManager = binding.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        locationManager = binding.applicationContext.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        sensorManager = binding.applicationContext.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        accelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
+            ?: sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         channel = MethodChannel(binding.binaryMessenger, "revev_engine")
         channel.setMethodCallHandler(this)
     }
+
     private fun prepareEngines(): String {
         // Version this directory when bundled definitions change. Never load user scripts.
         val root = File(context.filesDir, "engine-library-v3")
@@ -47,12 +75,70 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         }
         return root.absolutePath
     }
+
+    private fun startSensors() {
+        if (sensorsActive) return
+        sensorsActive = true
+        accelSensor?.let {
+            sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+        }
+        try {
+            if (context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                context.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 100L, 0.0f, this)
+            }
+        } catch (_: SecurityException) {
+            // Graceful fallback if permission not granted
+        }
+    }
+
+    private fun stopSensors() {
+        if (!sensorsActive) return
+        sensorsActive = false
+        sensorManager?.unregisterListener(this)
+        try {
+            locationManager?.removeUpdates(this)
+        } catch (_: SecurityException) {}
+    }
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event == null || currentDriveMode != 1) return
+        val x = event.values[0]
+        val y = event.values[1]
+        val z = event.values[2]
+        val forwardAccel = when (mountingPositionName) {
+            "trayTopForward" -> y
+            "trayTopRearward" -> -y
+            "trayTopLeft" -> x
+            "trayTopRight" -> -x
+            "uprightPortrait", "uprightLandscapeLeft", "uprightLandscapeRight" -> -z
+            else -> y
+        }
+        currentAccelMps2 = forwardAccel
+        nativeDriveTelemetry(currentSpeedMps, currentAccelMps2, currentAggressiveness, currentDriveMode)
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    override fun onLocationChanged(location: Location) {
+        if (currentDriveMode != 1) return
+        if (location.hasSpeed()) {
+            currentSpeedMps = location.speed
+        }
+        nativeDriveTelemetry(currentSpeedMps, currentAccelMps2, currentAggressiveness, currentDriveMode)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+
     private fun stop() {
+        stopSensors()
         nativeStop()
         playing = false
         focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         focusRequest = null
     }
+
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "start" -> {
@@ -91,16 +177,41 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                     (call.argument<Number>("strength") ?: 0.5).toFloat())
                 result.success(null)
             }
+            "driveTelemetry" -> {
+                currentSpeedMps = (call.argument<Number>("speedMps") ?: currentSpeedMps).toFloat()
+                currentAccelMps2 = (call.argument<Number>("accelMps2") ?: currentAccelMps2).toFloat()
+                currentAggressiveness = (call.argument<Number>("aggressiveness") ?: currentAggressiveness).toFloat()
+                currentDriveMode = (call.argument<Number>("driveMode") ?: currentDriveMode).toInt()
+                call.argument<String>("mountingPosition")?.let { mountingPositionName = it }
+
+                if (currentDriveMode == 1 && !sensorsActive) {
+                    startSensors()
+                } else if (currentDriveMode != 1 && sensorsActive) {
+                    stopSensors()
+                }
+
+                nativeDriveTelemetry(currentSpeedMps, currentAccelMps2, currentAggressiveness, currentDriveMode)
+                result.success(null)
+            }
             "stats" -> {
                 val s = nativeStats()
                 if (s[3] != 0.0 || s[4] != 0.0) stop()
-                result.success(mapOf("rpm" to s[0], "workMs" to s[1], "underruns" to s[2],
-                    "failed" to (s[3] != 0.0), "playing" to playing, "stopping" to (playing && s[5] != 0.0),
-                    "boost" to (if (s.size > 6) s[6] else 0.0)))
+                result.success(mapOf(
+                    "rpm" to s[0],
+                    "workMs" to s[1],
+                    "underruns" to s[2],
+                    "failed" to (s[3] != 0.0),
+                    "playing" to playing,
+                    "stopping" to (playing && s[5] != 0.0),
+                    "boost" to (if (s.size > 6) s[6] else 0.0),
+                    "gear" to (if (s.size > 7) s[7].toInt() else 0),
+                    "vehicleSpeed" to (if (s.size > 8) s[8] else 0.0)
+                ))
             }
             else -> result.notImplemented()
         }
     }
+
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         stop(); channel.setMethodCallHandler(null)
     }

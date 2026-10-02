@@ -4,55 +4,79 @@
     "name": "Porsche 911 Carrera 3.2 (approx.)",
     "entry": "entries/porsche/911_carrera_32.mr",
     "maxRpm": 8000,
-    "turbo": false
+    "turbo": false,
+    "gearCount": 5,
+    "gearRatios": [3.50, 2.06, 1.41, 1.07, 0.86],
+    "finalDrive": 3.44
   },
   {
     "id": "porsche/911_turbo_33",
     "name": "Porsche 911 Turbo 3.3 (approx.)",
     "entry": "entries/porsche/911_turbo_33.mr",
     "maxRpm": 8000,
-    "turbo": true
+    "turbo": true,
+    "gearCount": 4,
+    "gearRatios": [3.15, 1.79, 1.21, 0.89],
+    "finalDrive": 3.44
   },
   {
     "id": "atg-video-1/05_honda_vtec",
     "name": "Honda B18C5 [VTEC, I4]",
     "entry": "entries/atg-video-1/05_honda_vtec.mr",
     "maxRpm": 12000,
-    "turbo": false
+    "turbo": false,
+    "gearCount": 5,
+    "gearRatios": [3.23, 2.11, 1.46, 1.11, 0.85],
+    "finalDrive": 4.40
   },
   {
     "id": "atg-video-2/02_subaru_ej25_uh",
     "name": "Subaru EJ25 \u00b7 Unequal headers",
     "entry": "entries/atg-video-2/02_subaru_ej25_uh.mr",
     "maxRpm": 8000,
-    "turbo": false
+    "turbo": false,
+    "gearCount": 6,
+    "gearRatios": [3.64, 2.38, 1.76, 1.35, 1.06, 0.83],
+    "finalDrive": 3.90
   },
   {
     "id": "atg-video-2/07_gm_ls",
     "name": "GM LS",
     "entry": "entries/atg-video-2/07_gm_ls.mr",
     "maxRpm": 8000,
-    "turbo": false
+    "turbo": false,
+    "gearCount": 6,
+    "gearRatios": [2.66, 1.78, 1.30, 1.00, 0.74, 0.50],
+    "finalDrive": 3.42
   },
   {
     "id": "atg-video-2/08_ferrari_f136_v8",
     "name": "Ferrari F136",
     "entry": "entries/atg-video-2/08_ferrari_f136_v8.mr",
     "maxRpm": 12000,
-    "turbo": false
+    "turbo": false,
+    "gearCount": 7,
+    "gearRatios": [3.08, 2.19, 1.63, 1.29, 1.03, 0.84, 0.68],
+    "finalDrive": 4.50
   },
   {
     "id": "atg-video-2/03_2jz",
     "name": "2JZ [I6]",
     "entry": "entries/atg-video-2/03_2jz.mr",
     "maxRpm": 8000,
-    "turbo": true
+    "turbo": true,
+    "gearCount": 6,
+    "gearRatios": [3.83, 2.36, 1.69, 1.31, 1.00, 0.79],
+    "finalDrive": 3.27
   },
   {
     "id": "atg-video-2/10_lfa_v10",
     "name": "1LR-GUE [V10]",
     "entry": "entries/atg-video-2/10_lfa_v10.mr",
     "maxRpm": 12000,
-    "turbo": false
+    "turbo": false,
+    "gearCount": 6,
+    "gearRatios": [3.23, 2.19, 1.61, 1.26, 1.03, 0.80],
+    "finalDrive": 3.45
   }
 ]

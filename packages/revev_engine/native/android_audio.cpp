@@ -63,13 +63,19 @@ extern "C" JNIEXPORT void JNICALL
 Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeListeningMix(JNIEnv*, jobject, jint mode, jfloat strength) {
     engine.setListeningMix(mode, strength);
 }
+extern "C" JNIEXPORT void JNICALL
+Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeDriveTelemetry(
+    JNIEnv*, jobject, jfloat speedMps, jfloat accelMps2, jfloat aggressiveness, jint driveMode) {
+    engine.setDriveTelemetry(speedMps, accelMps2, aggressiveness, driveMode);
+}
 extern "C" JNIEXPORT jdoubleArray JNICALL
 Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeStats(JNIEnv *env, jobject) {
     const double stats[] = {engine.rpm(), engine.workMs(), static_cast<double>(engine.underruns()),
         static_cast<double>(engine.failed() || disconnected.load()),
         static_cast<double>(engine.finished()), static_cast<double>(engine.stopping()),
-        static_cast<double>(engine.boost())};
-    auto out = env->NewDoubleArray(7);
-    env->SetDoubleArrayRegion(out, 0, 7, stats);
+        static_cast<double>(engine.boost()), static_cast<double>(engine.gear()),
+        static_cast<double>(engine.vehicleSpeed())};
+    auto out = env->NewDoubleArray(9);
+    env->SetDoubleArrayRegion(out, 0, 9, stats);
     return out;
 }

@@ -11,6 +11,15 @@ enum ListeningMode {
   final String label;
 }
 
+enum DriveMode {
+  manual('Manual Rev'),
+  gpsDrive('GPS Drive'),
+  simDrive('Speed Sim');
+
+  const DriveMode(this.label);
+  final String label;
+}
+
 class EngineStats {
   const EngineStats({
     this.rpm = 0,
@@ -20,10 +29,16 @@ class EngineStats {
     this.failed = false,
     this.stopping = false,
     this.boost = 0.0,
+    this.gear = 0,
+    this.vehicleSpeed = 0.0,
   });
-  final double rpm, workMs, boost;
-  final int underruns;
+  final double rpm, workMs, boost, vehicleSpeed;
+  final int underruns, gear;
   final bool playing, failed, stopping;
+
+  double get speedKmh => vehicleSpeed * 3.6;
+  double get speedMph => vehicleSpeed * 2.23694;
+  String get gearDisplay => gear <= 0 ? 'N' : 'D$gear';
 }
 
 class RevevEngine {
@@ -39,6 +54,19 @@ class RevevEngine {
       });
   Future<void> controls(double throttle, double volume) => _channel
       .invokeMethod<void>('controls', {'throttle': throttle, 'volume': volume});
+  Future<void> driveTelemetry({
+    double speedMps = 0.0,
+    double accelMps2 = 0.0,
+    double aggressiveness = 0.5,
+    DriveMode driveMode = DriveMode.manual,
+    String mountingPosition = 'trayTopForward',
+  }) => _channel.invokeMethod<void>('driveTelemetry', {
+        'speedMps': speedMps,
+        'accelMps2': accelMps2,
+        'aggressiveness': aggressiveness,
+        'driveMode': driveMode.index,
+        'mountingPosition': mountingPosition,
+      });
   Future<EngineStats> stats() async {
     final data = await _channel.invokeMapMethod<String, dynamic>('stats') ?? {};
     return EngineStats(
@@ -49,6 +77,8 @@ class RevevEngine {
       failed: data['failed'] == true,
       stopping: data['stopping'] == true,
       boost: (data['boost'] as num? ?? 0).toDouble(),
+      gear: (data['gear'] as num? ?? 0).toInt(),
+      vehicleSpeed: (data['vehicleSpeed'] as num? ?? 0).toDouble(),
     );
   }
 }
