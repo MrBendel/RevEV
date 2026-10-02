@@ -37,9 +37,10 @@ the GitHub build button, and internal testing releases.
 
 ## What works in this prototype
 
-- An engine dropdown with the generic 2.0 L inline-four, 16 upstream car
-  engine definitions, and a custom Porsche 911 Carrera 3.2 flat-six approximation.
-  Motorcycle, ATV, industrial, aircraft and truck presets are excluded.
+- A curated engine dropdown featuring 6 iconic car engine definitions (Honda
+  B18C5 VTEC, Subaru EJ25 unequal-header boxer, GM LS V8, Ferrari F136 V8,
+  2JZ I6, and Lexus 1LR-GUE V10), and two Porsche 911 flat-six models:
+  naturally aspirated Carrera 3.2 and turbocharged 911 Turbo 3.3 approximations.
   Stop before switching. Templates compile on the native worker; first startup
   also unpacks the bundled library on Android.
 - Starter, ignition and rev limiter. Stop cuts ignition and lets the simulated
@@ -68,9 +69,7 @@ the GitHub build button, and internal testing releases.
 - Audio-focus loss / app backgrounding stops playback; resuming requires Start.
 - Android AAudio output; an iOS AVAudioEngine adapter shares the same core.
 
-The first engine is a tuning/test preset, not a sonic recreation of a particular
-car. Its exhaust now uses upstream's mild exhaust impulse response, with lower
-noise and jitter. Bundled engines use their own scripted exhaust responses and
+Bundled engines use their own scripted exhaust responses and
 simulation frequencies. High-frequency or many-cylinder definitions can exceed
 a device's processing budget and produce underruns; check the debug dashboard.
 CPU performance on the emulator is not a phone benchmark.

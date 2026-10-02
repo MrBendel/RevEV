@@ -58,7 +58,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
   bool _testing = false;
   String? _testPhase;
   EngineStats _stats = const EngineStats();
-  String _preset = 'generic';
+  String _preset = 'porsche/911_carrera_32';
   MountingPosition _mountingPosition = MountingPosition.trayTopForward;
   ListeningMode _listeningMode = ListeningMode.original;
   double _rumbleStrength = 0.5;

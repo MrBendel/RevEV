@@ -27,7 +27,7 @@ class EngineStats {
 
 class RevevEngine {
   static const _channel = MethodChannel('revev_engine');
-  Future<void> start({String preset = 'generic'}) =>
+  Future<void> start({String preset = 'porsche/911_carrera_32'}) =>
       _channel.invokeMethod<void>('start', {'preset': preset});
   Future<void> shutdown() => _channel.invokeMethod<void>('shutdown');
   Future<void> stop() => _channel.invokeMethod<void>('stop');

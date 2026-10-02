@@ -6,10 +6,14 @@ class EnginePresetInfo {
 }
 
 const enginePresets = <EnginePresetInfo>[
-  EnginePresetInfo("generic", "RevEV \u00b7 Generic 2.0 L I4", 8000),
   EnginePresetInfo(
     "porsche/911_carrera_32",
     "Porsche 911 Carrera 3.2 (approx.)",
+    8000,
+  ),
+  EnginePresetInfo(
+    "porsche/911_turbo_33",
+    "Porsche 911 Turbo 3.3 (approx.)",
     8000,
   ),
   EnginePresetInfo(
@@ -17,39 +21,13 @@ const enginePresets = <EnginePresetInfo>[
     "Honda B18C5 [VTEC, I4]",
     12000,
   ),
-  EnginePresetInfo("atg-video-1/06_subaru_ej25", "Subaru EJ25 (video 1)", 8000),
-  EnginePresetInfo("atg-video-1/07_audi_i5", "Audi 2.3 I5 (video 1)", 8000),
-  EnginePresetInfo(
-    "atg-video-2/01_subaru_ej25_eh",
-    "Subaru EJ25 \u00b7 Equal headers",
-    8000,
-  ),
   EnginePresetInfo(
     "atg-video-2/02_subaru_ej25_uh",
     "Subaru EJ25 \u00b7 Unequal headers",
     8000,
   ),
-  EnginePresetInfo("atg-video-2/03_2jz", "2JZ [I6]", 8000),
-  EnginePresetInfo("atg-video-2/04_60_degree_v6", "Generic 60 deg. V6", 8000),
-  EnginePresetInfo(
-    "atg-video-2/05_odd_fire_v6",
-    "Generic Odd-fire V6 (Common Rod Jnl.)",
-    8000,
-  ),
-  EnginePresetInfo(
-    "atg-video-2/06_even_fire_v6",
-    "Generic Even-fire V6 (Split Rod Jnl.)",
-    8000,
-  ),
   EnginePresetInfo("atg-video-2/07_gm_ls", "GM LS", 8000),
   EnginePresetInfo("atg-video-2/08_ferrari_f136_v8", "Ferrari F136", 12000),
+  EnginePresetInfo("atg-video-2/03_2jz", "2JZ [I6]", 8000),
   EnginePresetInfo("atg-video-2/10_lfa_v10", "1LR-GUE [V10]", 12000),
-  EnginePresetInfo(
-    "atg-video-2/12_ferrari_412_t2",
-    "Ferrari 412 T2 [V12]",
-    22000,
-  ),
-  EnginePresetInfo("audi/i5", "Audi 2.3 I5 (original)", 10000),
-  EnginePresetInfo("bmw/M52B28", "BMW M52B28", 10000),
-  EnginePresetInfo("chevrolet/engine_03_for_e1", "Chevrolet 454 (E1)", 8000),
 ];

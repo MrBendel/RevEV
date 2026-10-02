@@ -9,13 +9,13 @@ int main(int argc, char **argv) {
     EngineRuntime runtime;
     for (int pass = 0; pass < (argc > 2 ? 1 : 2); ++pass) {
         runtime.setThrottle(0);
-        runtime.start(argc > 1 ? argv[1] : "", argc > 2 ? argv[2] : "generic");
+        runtime.start(argc > 1 ? argv[1] : "", argc > 2 ? argv[2] : "porsche/911_carrera_32");
         double energy = 0;
         float idle = 0, high = 0;
         std::array<float, 441> pcm{};
         auto next = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
         // Aircraft flywheels can take 12 simulated seconds to crank.
-        const std::string id = argc > 2 ? argv[2] : "generic";
+        const std::string id = argc > 2 ? argv[2] : "porsche/911_carrera_32";
         const int idleBlocks = id == "atg-video-2/09_radial_9" || id == "atg-video-2/11_merlin_v12" ? 2400 : 800;
         for (int i = 0; i < idleBlocks + 600; ++i) {
             if (i == idleBlocks) { idle = runtime.rpm(); runtime.setThrottle(0.45f); }

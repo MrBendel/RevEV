@@ -1,6 +1,21 @@
 # Prototype validation — 2026-09-27
 
-## Audio headroom and limiter � 2026-09-30
+## Curated engine presets and 911 Turbo — 2026-10-01
+
+- Engine lineup refined to a curated 8-preset car selection:
+  Honda B18C5 VTEC, Subaru EJ25 (unequal-length headers), GM LS V8,
+  Ferrari F136 V8, Toyota 2JZ I6, Lexus 1LR-GUE V10, and two Porsche flat-six
+  approximations (NA 911 Carrera 3.2 and Turbo 911 Turbo 3.3). Baseline generic
+  2.0 L I4, redundant V6 test mules, duplicate Subarus, and secondary Audis/Chevrolets removed.
+- Default preset initialized to `porsche/911_carrera_32`.
+- Porsche 911 Turbo 3.3 approximates the Type 930 turbo flat-six (97 x 74.4 mm,
+  7.0:1 compression ratio, 91.6 cc chamber volume, turbo-adapted valve timing
+  and boost-flow rates with mild exhaust reverb acoustics).
+- Extracted Android asset directory bumped to `engine-library-v3` to ensure
+  devices unpack updated definitions and catalog.
+- All Flutter unit and widget tests pass; catalog generation verified.
+
+## Audio headroom and limiter — 2026-09-30
 
 - Synthesizer float transport test passes on Android x86_64: values above full
   scale reach the mixer unchanged, short reads zero-fill, and legacy int16
@@ -14,7 +29,7 @@
   Physical-device listening is required to distinguish remaining underruns or
   source distortion from the upstream integer clipping removed here.
 
-## Car presets and 911 � 2026-09-30
+## Car presets and 911 — 2026-09-30
 
 - Dropdown/native allowlist now contains 18 car presets: generic, 16 upstream
   car definitions, and a custom 911 Carrera 3.2 approximation. Excludes ATV,
@@ -32,7 +47,7 @@
 - Emulator work was ~23 ms per 10 ms block, with underruns: functionality passes,
   but real-time smoothness and subjective sound still need physical-device testing.
 
-## Cabin/rumble experiment — 2026-09-29
+## Cabin/rumble experiment â€” 2026-09-29
 
 - Static analysis clean; 14 Flutter tests pass, including forwarding mode and
   strength to native and locking listening controls during shutdown.
@@ -55,7 +70,7 @@
   speakers. Throttle is a temporary load proxy and cabin resonances are designed,
   not measured. RMS matching is bounded and not perceptual loudness matching.
 
-## Engine library update — 2026-09-29
+## Engine library update â€” 2026-09-29
 
 - Static analysis: no issues; 14 Flutter tests pass, including preset forwarding,
   tachometer range, coast-down state and disabled controls during shutdown.

@@ -76,7 +76,7 @@
 }
 - (void)handleMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
     if ([call.method isEqualToString:@"start"]) {
-        NSError *error = [self start:call.arguments[@"preset"] ?: @"generic"];
+        NSError *error = [self start:call.arguments[@"preset"] ?: @"porsche/911_carrera_32"];
         result(error ? [FlutterError errorWithCode:@"audio_start" message:error.localizedDescription details:nil] : nil);
     } else if ([call.method isEqualToString:@"stop"]) {
         [self stop]; result(nil);

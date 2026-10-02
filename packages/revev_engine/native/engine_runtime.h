@@ -14,7 +14,7 @@ public:
     static constexpr int sampleRate = 44100;
     static constexpr uint32_t capacity = 8192;
     ~EngineRuntime() { stop(); }
-    void start(const std::string &root = "", const std::string &preset = "generic");
+    void start(const std::string &root = "", const std::string &preset = "porsche/911_carrera_32");
     void shutdown() { stopping_ = true; throttle_ = 0; }
     bool stopping() const { return stopping_.load(); }
     bool finished() const { return done_.load() && read_.load() == write_.load(); }

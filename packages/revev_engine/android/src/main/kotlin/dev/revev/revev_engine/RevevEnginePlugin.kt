@@ -30,7 +30,7 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     }
     private fun prepareEngines(): String {
         // Version this directory when bundled definitions change. Never load user scripts.
-        val root = File(context.filesDir, "engine-library-v2")
+        val root = File(context.filesDir, "engine-library-v3")
         if (!File(root, ".ready").exists()) {
             fun copy(asset: String, target: File) {
                 val children = context.assets.list(asset) ?: emptyArray()
@@ -69,7 +69,7 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                     stop()
                     result.error("audio_focus", "Another app is using audio. Try again when it finishes.", null)
                 } else {
-                    val code = try { nativeStart(prepareEngines(), call.argument<String>("preset") ?: "generic") }
+                    val code = try { nativeStart(prepareEngines(), call.argument<String>("preset") ?: "porsche/911_carrera_32") }
                     catch (e: Exception) {
                         stop(); result.error("engine_assets", "Could not prepare bundled engines: ${e.message}", null)
                         return
