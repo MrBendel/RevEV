@@ -127,5 +127,65 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
     });
+
+    testWidgets('Speed Sim mode sends speed and throttle controls when running', (tester) async {
+      final calls = <MethodCall>[];
+      var playing = false;
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            calls.add(call);
+            if (call.method == 'start') playing = true;
+            if (call.method == 'stop' || call.method == 'shutdown') playing = false;
+            if (call.method == 'stats') {
+              return {
+                'playing': playing,
+                'rpm': 2728.0,
+                'gear': 2,
+                'vehicleSpeed': 12.5,
+                'tireSquealLevel': 0.0,
+              };
+            }
+            return null;
+          });
+
+      addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null));
+
+      tester.view.physicalSize = const Size(430, 2200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(const RevEvApp());
+
+      // Switch to Speed Sim mode
+      await tester.tap(find.text('SPEED SIM'));
+      await tester.pump();
+
+      // Start engine
+      await tester.tap(find.byKey(const Key('start')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(playing, isTrue);
+
+      // Adjust simulated speed slider (45 km/h ≈ 28 mph)
+      tester.widget<Slider>(find.byKey(const Key('sim-speed'))).onChanged!(45.0);
+      await tester.pump();
+
+      final speedCall = calls.lastWhere((c) => c.method == 'driveTelemetry');
+      expect((speedCall.arguments['speedMps'] as num).toDouble(), closeTo(12.5, 0.1));
+
+      // Adjust throttle slider to 25%
+      tester.widget<Slider>(find.byKey(const Key('throttle'))).onChanged!(0.25);
+      await tester.pump();
+
+      final throttleCall = calls.lastWhere((c) => c.method == 'controls');
+      expect(throttleCall.arguments['throttle'], 0.25);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
   });
 }
