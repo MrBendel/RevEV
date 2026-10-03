@@ -11,7 +11,7 @@ const authorize = new (Object.getPrototypeOf(async function () {}).constructor)(
   'github', 'context', 'core', 'process', script);
 
 async function run({ permission = 'write', ready = 'true', event = 'issue_comment',
-  ref = 'refs/heads/main', publish = 'true', pr = {} } = {}) {
+  ref = 'refs/heads/main', publish = 'true', pr = {}, notices = [], summaries = [] } = {}) {
   const outputs = {};
   await authorize({ rest: {
     repos: { getCollaboratorPermissionLevel: async () => ({ data: { permission } }) },
@@ -22,13 +22,27 @@ async function run({ permission = 'write', ready = 'true', event = 'issue_commen
     } }) },
   } }, { repo: { owner: 'MrBendel', repo: 'RevEV' }, actor: 'maintainer',
     sha: 'event-commit', eventName: event, ref, issue: { number: 2 } },
-  { setOutput: (key, value) => { outputs[key] = value; } },
+  {
+    setOutput: (key, value) => { outputs[key] = value; },
+    notice: (msg) => { notices.push(msg); },
+    summary: { addRaw: (text) => ({ write: async () => { summaries.push(text); } }) },
+  },
   { env: { PLAY_READY: ready, PUBLISH: publish, RELEASE_STATUS: 'draft' } });
   return outputs;
 }
 
 test('open PR uses exact head and completed internal release', async () => {
   assert.deepEqual(await run(), { ref: 'pr-head', publish: 'true', status: 'completed' });
+});
+test('authorized release adds notice and job summary directing to build job', async () => {
+  const notices = [];
+  const summaries = [];
+  await run({ notices, summaries });
+  assert.equal(notices.length, 1);
+  assert.match(notices[0], /separate "2\. Build and publish" job/);
+  assert.equal(summaries.length, 1);
+  assert.match(summaries[0], /Release request authorized/);
+  assert.match(summaries[0], /Destination: Play internal testing \(completed\)/);
 });
 test('merged PR uses exact merge commit', async () => {
   assert.equal((await run({ pr: { state: 'closed', merged: true } })).ref, 'merge-commit');
