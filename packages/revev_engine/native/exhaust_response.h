@@ -26,7 +26,7 @@ inline std::vector<int16_t> readExhaustResponse(const std::string &path) {
             if (u16(fmt.data()) != 1 || u16(fmt.data()+2) != 1 || u32(fmt.data()+4) != 44100 || (bits != 16 && bits != 24))
                 throw std::runtime_error("Unsupported exhaust response format");
         } else if (!std::memcmp(chunk, "data", 4) && bits) {
-            const auto samples = std::min<uint32_t>(size / (bits/8), 10000);
+            const auto samples = std::min<uint32_t>(size / (bits/8), 2500);
             std::vector<int16_t> pcm(samples);
             for (auto &sample : pcm) {
                 unsigned char bytes[3]{};
