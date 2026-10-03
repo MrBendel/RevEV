@@ -15,11 +15,17 @@ void main() {
             'playing': true,
             'failed': false,
             'boost': 0.85,
+            'vehicleSpeed': 15.0,
+            'accelMps2': 2.4,
           },
         );
     final stats = await RevevEngine().stats();
     expect(stats.rpm, 1700);
     expect(stats.playing, isTrue);
     expect(stats.boost, 0.85);
+    expect(stats.vehicleSpeed, 15.0);
+    expect(stats.speedMph.round(), 34);
+    expect(stats.accelMps2, 2.4);
+    expect(stats.accelG, closeTo(0.244, 0.01));
   });
 }

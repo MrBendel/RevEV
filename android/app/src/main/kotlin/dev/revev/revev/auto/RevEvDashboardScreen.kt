@@ -5,10 +5,12 @@ import androidx.car.app.Screen
 import androidx.car.app.model.Action
 import androidx.car.app.model.ActionStrip
 import androidx.car.app.model.CarColor
+import androidx.car.app.model.CarIcon
 import androidx.car.app.model.Pane
 import androidx.car.app.model.PaneTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.Template
+import androidx.core.graphics.drawable.IconCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import dev.revev.revev_engine.EngineBridge
@@ -70,6 +72,12 @@ class RevEvDashboardScreen(carContext: CarContext) : Screen(carContext), EngineB
     override fun onGetTemplate(): Template {
         val paneBuilder = Pane.Builder()
 
+        // Render analog instrument cluster (leather panel with tachometer, throttle, and dual speed/accel gauges)
+        try {
+            val clusterBitmap = CarInstrumentClusterRenderer.render(engineState, 600, 360)
+            paneBuilder.setImage(CarIcon.Builder(IconCompat.createWithBitmap(clusterBitmap)).build())
+        } catch (_: Exception) {}
+
         // Row 1: Engine status & current preset (Static title keeps template as a safe in-place refresh)
         val activeName = presetName(engineState.presetId)
         val statusText = if (engineState.playing) {
@@ -88,16 +96,19 @@ class RevEvDashboardScreen(carContext: CarContext) : Screen(carContext), EngineB
                 .build()
         )
 
-        // Row 2: Live RPM and boost telemetry (Static title avoids quota exhaustion while driving)
+        // Row 2: Live RPM and dual speed/accel telemetry (Static title avoids quota exhaustion while driving)
+        val speedStr = "${engineState.speedMph.toInt()} MPH"
+        val prefix = if (engineState.accelMps2 >= 0) "+" else ""
+        val accelStr = "$prefix${String.format(java.util.Locale.US, "%.1f", engineState.accelMps2)} m/s²"
         val rpmTitle = if (engineState.playing) {
-            "${engineState.rpm.toInt()} RPM"
+            "${engineState.rpm.toInt()} RPM · ${engineState.gearDisplay} · $speedStr · $accelStr"
         } else {
-            "0 RPM · Stopped"
+            "0 RPM · Stopped · 0 MPH · 0.0 m/s²"
         }
 
         val telemetryText = if (engineState.boostBar > 0.02) {
             val boostFormatted = String.format(java.util.Locale.US, "%.2f bar boost", engineState.boostBar)
-            "$boostFormatted · Throttle: ${(engineState.throttle * 100).toInt()}%"
+            "$boostFormatted · Throttle: ${(engineState.throttle * 100).toInt()}% · Mode: ${driveModeLabel(engineState.driveMode)}"
         } else {
             "Throttle: ${(engineState.throttle * 100).toInt()}% · Mode: ${driveModeLabel(engineState.driveMode)}"
         }
