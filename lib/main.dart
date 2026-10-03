@@ -66,18 +66,20 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
   DateTime _lastSpeedTime = DateTime.now();
   EngineStats _stats = const EngineStats();
   String _preset = 'porsche/911_carrera_32';
-  MountingPosition _mountingPosition = MountingPosition.trayTopForward;
+  MountingPosition _mountingPosition = MountingPosition.auto;
   ListeningMode _listeningMode = ListeningMode.original;
   double _rumbleStrength = 0.5;
   bool _mixBusy = false;
   double _throttle = 0, _volume = 0.15;
   bool _busy = false, _polling = false;
+  bool _hasLocationPermission = false;
   int _session = 0;
   String? _error;
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    unawaited(_checkLocationPermission());
     _engine.setRemoteCommandHandler(
       onRemoteStart: (preset) {
         if (!_stats.playing && !_busy) {
@@ -97,17 +99,37 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
       },
       onRemoteSetDriveMode: (mode) {
         setState(() => _driveMode = mode);
+        if (mode == DriveMode.gpsDrive && !_hasLocationPermission) {
+          unawaited(_requestLocationPermission());
+        }
         unawaited(_sendDriveTelemetry());
       },
       onRemoteSetAggressiveness: (aggr) {
         setState(() => _shiftAggressiveness = aggr);
         unawaited(_sendDriveTelemetry());
       },
+      onLocationPermissionResult: (granted) {
+        if (mounted) setState(() => _hasLocationPermission = granted);
+      },
     );
     _poll = Timer.periodic(
       const Duration(milliseconds: 150),
       (_) => _refresh(),
     );
+  }
+
+  Future<void> _checkLocationPermission() async {
+    try {
+      final granted = await _engine.hasLocationPermission();
+      if (mounted) setState(() => _hasLocationPermission = granted);
+    } catch (_) {}
+  }
+
+  Future<void> _requestLocationPermission() async {
+    try {
+      final granted = await _engine.requestLocationPermission();
+      if (mounted) setState(() => _hasLocationPermission = granted);
+    } catch (_) {}
   }
 
   Future<void> _sendDriveTelemetry() async {
@@ -787,7 +809,11 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                     onSelectionChanged: _busy || _testing
                         ? null
                         : (set) {
-                            setState(() => _driveMode = set.first);
+                            final mode = set.first;
+                            setState(() => _driveMode = mode);
+                            if (mode == DriveMode.gpsDrive && !_hasLocationPermission) {
+                              unawaited(_requestLocationPermission());
+                            }
                             _sendDriveTelemetry();
                           },
                   ),
@@ -1001,21 +1027,51 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                   ],
                   if (_driveMode == DriveMode.gpsDrive) ...[
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
                         color: const Color(0xff22211f),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: const Color(0xff3f3c36)),
                       ),
-                      child: const Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.gps_fixed, size: 16, color: Color(0xffa5b889)),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Automatic transmission driven by phone GPS speed & accelerometer g-force.',
-                              style: TextStyle(fontSize: 11, color: leatherMuted),
-                            ),
+                          Row(
+                            children: [
+                              Icon(
+                                _hasLocationPermission ? Icons.gps_fixed : Icons.gps_not_fixed,
+                                size: 16,
+                                color: _hasLocationPermission ? const Color(0xffa5b889) : Colors.orangeAccent,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  !_hasLocationPermission
+                                      ? 'Location permission needed for GPS Drive'
+                                      : _stats.playing
+                                          ? (_stats.vehicleSpeed > 0.5
+                                              ? 'GPS Active · ${_stats.speedMph.round()} MPH (${_stats.speedKmh.round()} km/h) · Gear ${_stats.gearDisplay}'
+                                              : 'GPS Active · Waiting for vehicle motion...')
+                                          : 'GPS Drive ready · Start engine to begin',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: ivory),
+                                ),
+                              ),
+                              if (!_hasLocationPermission)
+                                TextButton(
+                                  onPressed: _requestLocationPermission,
+                                  style: TextButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  child: const Text('ALLOW', style: TextStyle(color: needleRed, fontSize: 11, fontWeight: FontWeight.bold)),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Automatic transmission driven by phone GPS speed & accelerometer g-force.',
+                            style: const TextStyle(fontSize: 10, color: leatherMuted),
                           ),
                         ],
                       ),
