@@ -1,5 +1,6 @@
 package dev.revev.revev_engine
 
+import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
 import android.hardware.Sensor
@@ -15,14 +16,17 @@ import android.media.AudioManager
 import android.os.Bundle
 import java.io.File
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
-class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, SensorEventListener, LocationListener, EngineBridge.CommandHandler {
+class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler, SensorEventListener, LocationListener, EngineBridge.CommandHandler {
     private lateinit var channel: MethodChannel
     private lateinit var audioManager: AudioManager
     private var playing = false
     private lateinit var context: Context
+    private var activity: Activity? = null
     private var focusRequest: AudioFocusRequest? = null
 
     private var locationManager: LocationManager? = null
@@ -37,6 +41,20 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
     private var currentAggressiveness = 0.5f
     private var currentDriveMode = 0
     private var mountingPositionName = "trayTopForward"
+
+    // Gravity isolation filter for raw accelerometer
+    private val gravity = FloatArray(3)
+    private var gravityInitialized = false
+    private var lastSensorTimestampNs = 0L
+
+    // Low-pass smoothing filter on forward and lateral acceleration to prevent road vibration jitter
+    private var smoothedAccel = 0.0f
+    private var smoothedLateral = 0.0f
+
+    // Dead-reckoning velocity integration for instant responsiveness before/between GPS fixes
+    private var estimatedSpeedMps = 0.0f
+    private var lastGpsSpeedTimeMs = 0L
+    private var lastLocation: Location? = null
 
     private external fun nativeStart(root: String, preset: String): Int
     private external fun nativeStop()
@@ -66,6 +84,28 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
         EngineBridge.commandHandler = this
     }
 
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        activity = binding.activity
+        if (playing && currentDriveMode == 1 && sensorsActive) {
+            requestLocationUpdatesIfPermitted()
+        }
+    }
+
+    override fun onDetachedFromActivityForConfigChanges() {
+        activity = null
+    }
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+        activity = binding.activity
+        if (playing && currentDriveMode == 1 && sensorsActive) {
+            requestLocationUpdatesIfPermitted()
+        }
+    }
+
+    override fun onDetachedFromActivity() {
+        activity = null
+    }
+
     private fun prepareEngines(): String {
         // Version this directory when bundled definitions change. Never load user scripts.
         val root = File(context.filesDir, "engine-library-v4")
@@ -86,19 +126,51 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
         return root.absolutePath
     }
 
+    private fun resetSensorFilters() {
+        gravityInitialized = false
+        lastSensorTimestampNs = 0L
+        smoothedAccel = 0.0f
+        smoothedLateral = 0.0f
+    }
+
     private fun startSensors() {
         if (sensorsActive) return
         sensorsActive = true
+        resetSensorFilters()
+        estimatedSpeedMps = currentSpeedMps
+
         accelSensor?.let {
             sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
-        try {
-            if (context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-                context.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 100L, 0.0f, this)
+
+        requestLocationUpdatesIfPermitted()
+    }
+
+    private fun requestLocationUpdatesIfPermitted() {
+        val hasFine = context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = context.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+        if (hasFine || hasCoarse) {
+            try {
+                if (locationManager?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true) {
+                    locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 100L, 0.0f, this)
+                }
+                if (locationManager?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true) {
+                    locationManager?.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 250L, 0.0f, this)
+                }
+            } catch (_: SecurityException) {
+                // Graceful fallback
             }
-        } catch (_: SecurityException) {
-            // Graceful fallback if permission not granted
+        } else {
+            activity?.let { act ->
+                act.requestPermissions(
+                    arrayOf(
+                        android.Manifest.permission.ACCESS_FINE_LOCATION,
+                        android.Manifest.permission.ACCESS_COARSE_LOCATION
+                    ),
+                    1001
+                )
+            }
         }
     }
 
@@ -109,28 +181,97 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
         try {
             locationManager?.removeUpdates(this)
         } catch (_: SecurityException) {}
+        resetSensorFilters()
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event == null || currentDriveMode != 1) return
-        val x = event.values[0]
-        val y = event.values[1]
-        val z = event.values[2]
-        val forwardAccel = when (mountingPositionName) {
-            "trayTopForward" -> y
-            "trayTopRearward" -> -y
-            "trayTopLeft" -> x
-            "trayTopRight" -> -x
-            "uprightPortrait", "uprightLandscapeLeft", "uprightLandscapeRight" -> -z
-            else -> y
+        if (event == null || currentDriveMode != 1 || !playing) return
+
+        val dt = if (lastSensorTimestampNs > 0L) {
+            val delta = (event.timestamp - lastSensorTimestampNs) * 1e-9f
+            if (delta in 0.001f..1.0f) delta else 0.02f
+        } else {
+            0.02f
         }
-        val lateralAccel = when (mountingPositionName) {
-            "trayTopForward", "trayTopRearward", "uprightPortrait" -> kotlin.math.abs(x)
-            "trayTopLeft", "trayTopRight", "uprightLandscapeLeft", "uprightLandscapeRight" -> kotlin.math.abs(y)
-            else -> kotlin.math.abs(x)
+        lastSensorTimestampNs = event.timestamp
+
+        val rawX = event.values[0]
+        val rawY = event.values[1]
+        val rawZ = event.values[2]
+
+        val linearX: Float
+        val linearY: Float
+        val linearZ: Float
+
+        if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+            if (!gravityInitialized) {
+                gravity[0] = rawX
+                gravity[1] = rawY
+                gravity[2] = rawZ
+                gravityInitialized = true
+            } else {
+                // Time constant ~ 3.0s isolates steady gravity / mount tilt while passing vehicle acceleration
+                val timeConstant = 3.0f
+                val alpha = timeConstant / (timeConstant + dt)
+                gravity[0] = alpha * gravity[0] + (1.0f - alpha) * rawX
+                gravity[1] = alpha * gravity[1] + (1.0f - alpha) * rawY
+                gravity[2] = alpha * gravity[2] + (1.0f - alpha) * rawZ
+            }
+            linearX = rawX - gravity[0]
+            linearY = rawY - gravity[1]
+            linearZ = rawZ - gravity[2]
+        } else {
+            // TYPE_LINEAR_ACCELERATION: gravity is already subtracted by Android sensor HAL
+            linearX = rawX
+            linearY = rawY
+            linearZ = rawZ
         }
-        currentAccelMps2 = forwardAccel
-        currentLateralAccelMps2 = lateralAccel
+
+        // Transform device axes to vehicle forward & lateral acceleration based on mounting position
+        val rawForward = when (mountingPositionName) {
+            "trayTopForward" -> linearY
+            "trayTopRearward" -> -linearY
+            "trayTopLeft" -> -linearX
+            "trayTopRight" -> linearX
+            "uprightPortrait", "uprightLandscapeLeft", "uprightLandscapeRight" -> -linearZ
+            else -> linearY
+        }
+
+        val rawLateral = when (mountingPositionName) {
+            "trayTopForward", "trayTopRearward", "uprightPortrait" -> kotlin.math.abs(linearX)
+            "trayTopLeft", "trayTopRight", "uprightLandscapeLeft", "uprightLandscapeRight" -> kotlin.math.abs(linearY)
+            else -> kotlin.math.abs(linearX)
+        }
+
+        // Deadzone micro-vibrations (< 0.08 m/s^2)
+        val deadbandForward = if (kotlin.math.abs(rawForward) < 0.08f) 0.0f else rawForward
+        val deadbandLateral = if (rawLateral < 0.08f) 0.0f else rawLateral
+
+        // Low-pass smoothing on forward and lateral acceleration to prevent chassis vibration jitter
+        val smoothAlpha = dt / (0.12f + dt)
+        smoothedAccel += (deadbandForward - smoothedAccel) * smoothAlpha
+        smoothedLateral += (deadbandLateral - smoothedLateral) * smoothAlpha
+
+        currentAccelMps2 = smoothedAccel
+        currentLateralAccelMps2 = smoothedLateral
+
+        // Dead-reckon vehicle speed if GPS hasn't updated recently (> 1.2s or stationary launch)
+        val nowMs = System.currentTimeMillis()
+        if (nowMs - lastGpsSpeedTimeMs > 1200L || currentSpeedMps < 0.5f) {
+            if (currentAccelMps2 > 0.15f) {
+                // Accelerating: integrate speed
+                estimatedSpeedMps = kotlin.math.max(0.0f, estimatedSpeedMps + currentAccelMps2 * dt)
+                currentSpeedMps = kotlin.math.max(currentSpeedMps, estimatedSpeedMps)
+            } else if (currentAccelMps2 < -0.3f) {
+                // Braking: decelerate
+                estimatedSpeedMps = kotlin.math.max(0.0f, estimatedSpeedMps + currentAccelMps2 * dt)
+                currentSpeedMps = estimatedSpeedMps
+            } else if (currentSpeedMps < 1.0f) {
+                estimatedSpeedMps = kotlin.math.max(0.0f, estimatedSpeedMps - 0.5f * dt)
+                currentSpeedMps = estimatedSpeedMps
+            }
+        }
+
         nativeDriveTelemetry(
             currentSpeedMps,
             currentAccelMps2,
@@ -145,9 +286,23 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
 
     override fun onLocationChanged(location: Location) {
         if (currentDriveMode != 1) return
+        val prev = lastLocation
+        lastLocation = location
+        lastGpsSpeedTimeMs = System.currentTimeMillis()
+
         if (location.hasSpeed()) {
             currentSpeedMps = location.speed
+        } else if (prev != null) {
+            val dt = (location.time - prev.time) / 1000.0f
+            if (dt > 0.05f) {
+                val derivedSpeed = location.distanceTo(prev) / dt
+                if (derivedSpeed >= 0.0f && derivedSpeed < 100.0f) {
+                    currentSpeedMps = derivedSpeed
+                }
+            }
         }
+        estimatedSpeedMps = currentSpeedMps
+
         nativeDriveTelemetry(
             currentSpeedMps,
             currentAccelMps2,
@@ -195,6 +350,9 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
                     if (playing) {
                         val chosenPreset = call.argument<String>("preset") ?: "porsche/911_carrera_32"
                         EngineBridge.updateState { it.copy(playing = true, stopping = false, failed = false, presetId = chosenPreset) }
+                        if (currentDriveMode == 1) {
+                            startSensors()
+                        }
                         result.success(null)
                     } else { stop(); result.error("audio_start", "Audio output could not start (code $code).", null) }
                 }
@@ -214,17 +372,37 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
                 result.success(null)
             }
             "driveTelemetry" -> {
-                currentSpeedMps = (call.argument<Number>("speedMps") ?: currentSpeedMps).toFloat()
-                currentAccelMps2 = (call.argument<Number>("accelMps2") ?: currentAccelMps2).toFloat()
-                currentAggressiveness = (call.argument<Number>("aggressiveness") ?: currentAggressiveness).toFloat()
-                currentDriveMode = (call.argument<Number>("driveMode") ?: currentDriveMode).toInt()
-                call.argument<Number>("lateralAccelMps2")?.let { currentLateralAccelMps2 = it.toFloat() }
-                call.argument<Number>("tireSquealSensitivity")?.let { currentTireSquealSensitivity = it.toFloat() }
-                call.argument<String>("mountingPosition")?.let { mountingPositionName = it }
+                val newDriveMode = (call.argument<Number>("driveMode") ?: currentDriveMode).toInt()
+                val prevDriveMode = currentDriveMode
+                currentDriveMode = newDriveMode
 
-                if (currentDriveMode == 1 && !sensorsActive) {
-                    startSensors()
-                } else if (currentDriveMode != 1 && sensorsActive) {
+                currentAggressiveness = (call.argument<Number>("aggressiveness") ?: currentAggressiveness).toFloat()
+                call.argument<Number>("tireSquealSensitivity")?.let { currentTireSquealSensitivity = it.toFloat() }
+
+                call.argument<String>("mountingPosition")?.let { newPos ->
+                    if (mountingPositionName != newPos) {
+                        mountingPositionName = newPos
+                        resetSensorFilters()
+                    }
+                }
+
+                // In GPS Drive (mode 1), speed and acceleration come from native sensors (GPS + accelerometer).
+                // Do NOT let Flutter overwrite them with 0.0.
+                if (currentDriveMode != 1) {
+                    currentSpeedMps = (call.argument<Number>("speedMps") ?: currentSpeedMps).toFloat()
+                    currentAccelMps2 = (call.argument<Number>("accelMps2") ?: currentAccelMps2).toFloat()
+                    call.argument<Number>("lateralAccelMps2")?.let { currentLateralAccelMps2 = it.toFloat() }
+                } else if (prevDriveMode != 1) {
+                    // Transitioned into GPS Drive mode: clear old sim speed/accel
+                    currentSpeedMps = 0.0f
+                    currentAccelMps2 = 0.0f
+                    currentLateralAccelMps2 = 0.0f
+                    resetSensorFilters()
+                }
+
+                if (playing && currentDriveMode == 1) {
+                    if (!sensorsActive) startSensors()
+                } else if (sensorsActive) {
                     stopSensors()
                 }
 
@@ -280,7 +458,9 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
         if (EngineBridge.commandHandler == this) {
             EngineBridge.commandHandler = null
         }
-        stop(); channel.setMethodCallHandler(null)
+        stop()
+        channel.setMethodCallHandler(null)
+        activity = null
     }
 
     override fun onStartEngine(presetId: String?) {
@@ -302,6 +482,14 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
     }
 
     override fun onSetDriveMode(mode: Int) {
+        currentDriveMode = mode
+        if (playing) {
+            if (currentDriveMode == 1) {
+                if (!sensorsActive) startSensors()
+            } else {
+                if (sensorsActive) stopSensors()
+            }
+        }
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             channel.invokeMethod("onRemoteSetDriveMode", mapOf("driveMode" to mode))
         }
