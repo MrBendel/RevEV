@@ -2,6 +2,7 @@ package dev.revev.revev.auto
 
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
+import androidx.car.app.constraints.ConstraintManager
 import androidx.car.app.model.Action
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
@@ -34,7 +35,18 @@ class EngineSelectScreen(carContext: CarContext) : Screen(carContext) {
         val listBuilder = ItemList.Builder()
         val currentPreset = EngineBridge.currentState.presetId
 
-        for (preset in PRESETS) {
+        val maxItems = try {
+            carContext.getCarService(ConstraintManager::class.java)
+                .getContentLimit(ConstraintManager.CONTENT_LIMIT_TYPE_LIST)
+        } catch (_: Exception) {
+            6
+        }
+
+        // Prioritize active preset first so it is always selectable under driving constraints
+        val sortedPresets = PRESETS.sortedByDescending { it.id == currentPreset }
+        val visiblePresets = sortedPresets.take(maxItems.coerceAtLeast(1))
+
+        for (preset in visiblePresets) {
             val isCurrent = preset.id == currentPreset
             val title = if (isCurrent) "✓ ${preset.name}" else preset.name
             val row = Row.Builder()

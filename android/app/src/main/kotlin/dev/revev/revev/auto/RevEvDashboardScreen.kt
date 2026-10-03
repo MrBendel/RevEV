@@ -15,6 +15,7 @@ import dev.revev.revev_engine.EngineBridge
 
 class RevEvDashboardScreen(carContext: CarContext) : Screen(carContext), EngineBridge.Listener {
     private var engineState = EngineBridge.currentState
+    private var lastInvalidateMs = 0L
 
     init {
         lifecycle.addObserver(object : DefaultLifecycleObserver {
@@ -29,8 +30,20 @@ class RevEvDashboardScreen(carContext: CarContext) : Screen(carContext), EngineB
     }
 
     override fun onEngineStateChanged(state: EngineBridge.State) {
+        val old = engineState
         engineState = state
-        invalidate()
+        val isStructural = old.playing != state.playing ||
+            old.stopping != state.stopping ||
+            old.failed != state.failed ||
+            old.presetId != state.presetId ||
+            old.driveMode != state.driveMode ||
+            old.gear != state.gear
+
+        val now = System.currentTimeMillis()
+        if (isStructural || (now - lastInvalidateMs) >= 1000L) {
+            lastInvalidateMs = now
+            invalidate()
+        }
     }
 
     private fun presetName(id: String): String {
@@ -57,7 +70,7 @@ class RevEvDashboardScreen(carContext: CarContext) : Screen(carContext), EngineB
     override fun onGetTemplate(): Template {
         val paneBuilder = Pane.Builder()
 
-        // Row 1: Engine status & current preset
+        // Row 1: Engine status & current preset (Static title keeps template as a safe in-place refresh)
         val activeName = presetName(engineState.presetId)
         val statusText = if (engineState.playing) {
             "RUNNING · ${engineState.gearDisplay} · ${engineState.speedMph.toInt()} MPH (${engineState.speedKmh.toInt()} KM/H)"
@@ -69,12 +82,13 @@ class RevEvDashboardScreen(carContext: CarContext) : Screen(carContext), EngineB
 
         paneBuilder.addRow(
             Row.Builder()
-                .setTitle(activeName)
+                .setTitle("Engine & Status")
+                .addText(activeName)
                 .addText(statusText)
                 .build()
         )
 
-        // Row 2: Live RPM and boost telemetry
+        // Row 2: Live RPM and boost telemetry (Static title avoids quota exhaustion while driving)
         val rpmTitle = if (engineState.playing) {
             "${engineState.rpm.toInt()} RPM"
         } else {
@@ -82,7 +96,7 @@ class RevEvDashboardScreen(carContext: CarContext) : Screen(carContext), EngineB
         }
 
         val telemetryText = if (engineState.boostBar > 0.02) {
-            val boostFormatted = String.format("%.2f bar boost", engineState.boostBar)
+            val boostFormatted = String.format(java.util.Locale.US, "%.2f bar boost", engineState.boostBar)
             "$boostFormatted · Throttle: ${(engineState.throttle * 100).toInt()}%"
         } else {
             "Throttle: ${(engineState.throttle * 100).toInt()}% · Mode: ${driveModeLabel(engineState.driveMode)}"
@@ -90,7 +104,8 @@ class RevEvDashboardScreen(carContext: CarContext) : Screen(carContext), EngineB
 
         paneBuilder.addRow(
             Row.Builder()
-                .setTitle(rpmTitle)
+                .setTitle("Live Telemetry")
+                .addText(rpmTitle)
                 .addText(telemetryText)
                 .build()
         )
@@ -100,7 +115,8 @@ class RevEvDashboardScreen(carContext: CarContext) : Screen(carContext), EngineB
         val modeSub = "Shift Aggressiveness: ${aggressivenessLabel(engineState.shiftAggressiveness)}"
         paneBuilder.addRow(
             Row.Builder()
-                .setTitle(modeTitle)
+                .setTitle("Drive Mode & Transmission")
+                .addText(modeTitle)
                 .addText(modeSub)
                 .build()
         )

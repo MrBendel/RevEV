@@ -26,6 +26,28 @@ void main() {
       expect(content, contains('androidx.car.app.minCarApiLevel'));
       expect(content, contains('.auto.RevEvCarAppService'));
       expect(content, contains('androidx.car.app.CarAppService'));
+      expect(content, contains('androidx.car.app.category.IOT'));
+      expect(content, contains('androidx.car.app.category.POI'));
+    });
+
+    test('EngineSelectScreen respects in-vehicle list limits via ConstraintManager', () {
+      final selectFile = File('android/app/src/main/kotlin/dev/revev/revev/auto/EngineSelectScreen.kt');
+      expect(selectFile.existsSync(), isTrue);
+      final content = selectFile.readAsStringSync();
+      expect(content, contains('ConstraintManager'));
+      expect(content, contains('CONTENT_LIMIT_TYPE_LIST'));
+      expect(content, contains('sortedByDescending'));
+      expect(content, contains('take(maxItems'));
+    });
+
+    test('RevEvDashboardScreen uses static row titles and throttled telemetry to protect step quota', () {
+      final dashboardFile = File('android/app/src/main/kotlin/dev/revev/revev/auto/RevEvDashboardScreen.kt');
+      expect(dashboardFile.existsSync(), isTrue);
+      final content = dashboardFile.readAsStringSync();
+      expect(content, contains('setTitle("Engine & Status")'));
+      expect(content, contains('setTitle("Live Telemetry")'));
+      expect(content, contains('setTitle("Drive Mode & Transmission")'));
+      expect(content, contains('lastInvalidateMs'));
     });
   });
 
