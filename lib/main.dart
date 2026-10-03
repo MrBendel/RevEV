@@ -1225,6 +1225,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                             : (value) {
                                 if (value != null) {
                                   setState(() => _mountingPosition = value);
+                                  _sendDriveTelemetry();
                                 }
                               },
                       ),
