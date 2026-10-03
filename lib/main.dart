@@ -59,7 +59,9 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
   String? _testPhase;
   DriveMode _driveMode = DriveMode.manual;
   double _shiftAggressiveness = 0.6;
+  double _tireSquealSensitivity = 0.5;
   double _simulatedSpeedKmh = 0.0;
+  double _simulatedLateralG = 0.0;
   double _lastSimSpeed = 0.0;
   DateTime _lastSpeedTime = DateTime.now();
   EngineStats _stats = const EngineStats();
@@ -122,6 +124,9 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
     final speedMps = _driveMode == DriveMode.simDrive
         ? _simulatedSpeedKmh / 3.6
         : 0.0;
+    final lateralAccel = _driveMode == DriveMode.simDrive
+        ? _simulatedLateralG * 9.80665
+        : 0.0;
     try {
       await _engine.driveTelemetry(
         speedMps: speedMps,
@@ -129,6 +134,8 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
         aggressiveness: _shiftAggressiveness,
         driveMode: _driveMode,
         mountingPosition: _mountingPosition.name,
+        lateralAccelMps2: lateralAccel,
+        tireSquealSensitivity: _tireSquealSensitivity,
       );
     } catch (_) {}
   }
@@ -836,6 +843,58 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                       ],
                     ),
                     const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'TIRE SQUEAL SENSITIVITY',
+                            style: TextStyle(
+                              fontSize: 10,
+                              letterSpacing: 2,
+                              color: ivory,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          _tireSquealSensitivity <= 0.05
+                              ? 'OFF'
+                              : _tireSquealSensitivity < 0.4
+                              ? 'LOW · ${(_tireSquealSensitivity * 100).round()}%'
+                              : _tireSquealSensitivity < 0.75
+                              ? 'MED · ${(_tireSquealSensitivity * 100).round()}%'
+                              : 'HIGH · ${(_tireSquealSensitivity * 100).round()}%',
+                          style: const TextStyle(
+                            color: leatherMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 3,
+                        activeTrackColor: needleRed,
+                        thumbColor: ivory,
+                        inactiveTrackColor: const Color(0xff3c3934),
+                      ),
+                      child: Slider(
+                        key: const Key('tire-squeal-sensitivity'),
+                        value: _tireSquealSensitivity,
+                        onChanged: (v) {
+                          setState(() => _tireSquealSensitivity = v);
+                          _sendDriveTelemetry();
+                        },
+                      ),
+                    ),
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('OFF', style: TextStyle(fontSize: 9, color: leatherMuted)),
+                        Text('BALANCED', style: TextStyle(fontSize: 9, color: leatherMuted)),
+                        Text('TRACK', style: TextStyle(fontSize: 9, color: leatherMuted)),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
                   ],
                   if (_driveMode == DriveMode.simDrive) ...[
                     Row(
@@ -885,6 +944,57 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                         Text('0 MPH', style: TextStyle(fontSize: 9, color: leatherMuted)),
                         Text('55 MPH', style: TextStyle(fontSize: 9, color: leatherMuted)),
                         Text('112 MPH', style: TextStyle(fontSize: 9, color: leatherMuted)),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'SIMULATED LATERAL G',
+                            style: TextStyle(
+                              fontSize: 10,
+                              letterSpacing: 2,
+                              color: ivory,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '${_simulatedLateralG.toStringAsFixed(2)} G',
+                          style: TextStyle(
+                            color: _stats.tireSquealLevel > 0.05 ? needleRed : leatherMuted,
+                            fontSize: 12,
+                            fontWeight: _stats.tireSquealLevel > 0.05 ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 3,
+                        activeTrackColor: needleRed,
+                        thumbColor: ivory,
+                        inactiveTrackColor: const Color(0xff3c3934),
+                      ),
+                      child: Slider(
+                        key: const Key('sim-lateral-g'),
+                        value: _simulatedLateralG,
+                        max: 1.5,
+                        divisions: 30,
+                        onChanged: _stats.playing && !_stats.stopping && !_busy && !_testing
+                            ? (v) {
+                                setState(() => _simulatedLateralG = v);
+                                _sendDriveTelemetry();
+                              }
+                            : null,
+                      ),
+                    ),
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('0.0 G', style: TextStyle(fontSize: 9, color: leatherMuted)),
+                        Text('0.75 G', style: TextStyle(fontSize: 9, color: leatherMuted)),
+                        Text('1.50 G', style: TextStyle(fontSize: 9, color: leatherMuted)),
                       ],
                     ),
                     const SizedBox(height: 18),

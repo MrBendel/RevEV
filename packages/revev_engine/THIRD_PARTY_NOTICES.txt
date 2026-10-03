@@ -130,3 +130,12 @@ Bison 3.8.2 generated parser skeleton
 
 // This special exception was added by the Free Software Foundation in
 // version 2.2 of Bison.
+
+
+tire_squeal.wav:
+Source: godot_racing (https://github.com/electronstudio/godot_racing)
+Originally from OpenGameArt: "Car tire squealing sound effects"
+Author: audible-edge (Tom Haigh)
+License: Creative Commons Attribution 3.0 Unported (CC-BY 3.0)
+https://creativecommons.org/licenses/by/3.0/
+

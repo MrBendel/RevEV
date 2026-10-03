@@ -31,8 +31,9 @@ class EngineStats {
     this.boost = 0.0,
     this.gear = 0,
     this.vehicleSpeed = 0.0,
+    this.tireSquealLevel = 0.0,
   });
-  final double rpm, workMs, boost, vehicleSpeed;
+  final double rpm, workMs, boost, vehicleSpeed, tireSquealLevel;
   final int underruns, gear;
   final bool playing, failed, stopping;
 
@@ -60,12 +61,16 @@ class RevevEngine {
     double aggressiveness = 0.5,
     DriveMode driveMode = DriveMode.manual,
     String mountingPosition = 'trayTopForward',
+    double lateralAccelMps2 = 0.0,
+    double tireSquealSensitivity = 0.5,
   }) => _channel.invokeMethod<void>('driveTelemetry', {
         'speedMps': speedMps,
         'accelMps2': accelMps2,
         'aggressiveness': aggressiveness,
         'driveMode': driveMode.index,
         'mountingPosition': mountingPosition,
+        'lateralAccelMps2': lateralAccelMps2,
+        'tireSquealSensitivity': tireSquealSensitivity,
       });
   Future<EngineStats> stats() async {
     final data = await _channel.invokeMapMethod<String, dynamic>('stats') ?? {};
@@ -79,6 +84,7 @@ class RevevEngine {
       boost: (data['boost'] as num? ?? 0).toDouble(),
       gear: (data['gear'] as num? ?? 0).toInt(),
       vehicleSpeed: (data['vehicleSpeed'] as num? ?? 0).toDouble(),
+      tireSquealLevel: (data['tireSquealLevel'] as num? ?? 0).toDouble(),
     );
   }
 

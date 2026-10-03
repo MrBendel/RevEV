@@ -14,7 +14,8 @@ object EngineBridge {
         val presetId: String = "porsche/911_carrera_32",
         val driveMode: Int = 0, // 0 = manual, 1 = gps, 2 = sim
         val shiftAggressiveness: Float = 0.5f,
-        val throttle: Float = 0.0f
+        val throttle: Float = 0.0f,
+        val tireSquealLevel: Double = 0.0
     ) {
         val speedKmh: Double get() = vehicleSpeedMps * 3.6
         val speedMph: Double get() = vehicleSpeedMps * 2.23694

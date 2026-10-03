@@ -23,11 +23,12 @@ public:
         return std::copysign(compressed, x);
     }
 
-    // Mix engine PCM and turbo sound with soft compression
-    static inline float mix(float engine, float turbo) {
+    // Mix engine PCM, turbo sound, and tire squeal with soft compression
+    static inline float mix(float engine, float turbo, float squeal = 0.0f) {
         if (!std::isfinite(engine)) engine = 0.0f;
         if (!std::isfinite(turbo)) turbo = 0.0f;
-        const float combined = engine + turbo;
+        if (!std::isfinite(squeal)) squeal = 0.0f;
+        const float combined = engine + turbo + squeal;
         return softCompress(combined);
     }
 };
