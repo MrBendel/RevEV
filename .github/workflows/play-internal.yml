@@ -1,5 +1,4 @@
 name: Play internal release
-run-name: Play internal release (${{ github.event_name == 'issue_comment' && format('PR #{0}', github.event.issue.number) || github.ref_name }}) by @${{ github.actor }}
 on:
   workflow_dispatch:
     inputs:
