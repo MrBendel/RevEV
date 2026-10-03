@@ -65,8 +65,9 @@ Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeListeningMix(JNIEnv*, jobje
 }
 extern "C" JNIEXPORT void JNICALL
 Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeDriveTelemetry(
-    JNIEnv*, jobject, jfloat speedMps, jfloat accelMps2, jfloat aggressiveness, jint driveMode) {
-    engine.setDriveTelemetry(speedMps, accelMps2, aggressiveness, driveMode);
+    JNIEnv*, jobject, jfloat speedMps, jfloat accelMps2, jfloat aggressiveness, jint driveMode,
+    jfloat lateralAccelMps2, jfloat tireSquealSensitivity) {
+    engine.setDriveTelemetry(speedMps, accelMps2, aggressiveness, driveMode, lateralAccelMps2, tireSquealSensitivity);
 }
 extern "C" JNIEXPORT jdoubleArray JNICALL
 Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeStats(JNIEnv *env, jobject) {
@@ -74,8 +75,8 @@ Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeStats(JNIEnv *env, jobject)
         static_cast<double>(engine.failed() || disconnected.load()),
         static_cast<double>(engine.finished()), static_cast<double>(engine.stopping()),
         static_cast<double>(engine.boost()), static_cast<double>(engine.gear()),
-        static_cast<double>(engine.vehicleSpeed())};
-    auto out = env->NewDoubleArray(9);
-    env->SetDoubleArrayRegion(out, 0, 9, stats);
+        static_cast<double>(engine.vehicleSpeed()), static_cast<double>(engine.tireSquealLevel())};
+    auto out = env->NewDoubleArray(10);
+    env->SetDoubleArrayRegion(out, 0, 10, stats);
     return out;
 }

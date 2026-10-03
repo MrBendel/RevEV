@@ -6,6 +6,7 @@
 #include "listening_mix.h"
 #include "output_limiter.h"
 #include "turbo_model.h"
+#include "tire_squeal_model.h"
 #include "audio_mixer.h"
 #include "transmission_model.h"
 #include "piston_engine_simulator.h"
@@ -102,6 +103,8 @@ void EngineRuntime::run() {
         OutputLimiter limiter;
         TurboModel turboModel;
         turboModel.setEnabled(isTurbo_);
+        TireSquealModel tireSquealModel;
+        tireSquealModel.load(assetRoot_.empty() ? "" : assetRoot_ + "/es/sound-library/new/tire_squeal.wav");
         TransmissionModel transmissionModel;
         try {
             const auto &p = getPreset(presetId_);
@@ -168,6 +171,10 @@ void EngineRuntime::run() {
             rpm_ = std::max(0.0f, rpm);
             turboModel.updatePhysics(0.01f, rpm, filteredThrottle, static_cast<float>(preset.engine->getRedline()));
             boost_ = turboModel.boostBar();
+            const float latG = std::abs(lateralAccelMps2_.load()) / 9.80665f;
+            const float squealSensitivity = tireSquealSensitivity_.load();
+            tireSquealModel.updatePhysics(0.01f, latG, speed, squealSensitivity);
+            tireSquealLevel_ = tireSquealModel.volume();
             if (shuttingDown && ((shutdownElapsed > 0.3 && std::abs(rpm) < 60) || shutdownElapsed >= 8 ||
                 t - shutdownStarted >= std::chrono::seconds(8))) fading = true;
             const int mode = listeningMode_.load();
@@ -176,7 +183,8 @@ void EngineRuntime::run() {
                 const float fade = fading ? std::max(0.0, 1.0 - (fadeElapsed + i / 44100.0) / 0.2) : 1.0;
                 if (!std::isfinite(pcm[i])) throw std::runtime_error("Non-finite engine audio");
                 const float turboSound = turboModel.processSample();
-                const float mixed = AudioMixer::mix(pcm[i], turboSound);
+                const float squealSound = tireSquealModel.processSample();
+                const float mixed = AudioMixer::mix(pcm[i], turboSound, squealSound);
                 const float shaped = listeningMix.process(mixed, mode, strength, filteredThrottle);
                 buffer_[(w + i) % capacity] = limiter.process(AudioMixer::softCompress(shaped)) * fade;
             }

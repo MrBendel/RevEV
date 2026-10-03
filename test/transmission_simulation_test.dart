@@ -45,6 +45,10 @@ void main() {
       expect(stats.gearDisplay, 'D3');
       expect(stats.speedKmh.round(), 72);
       expect(stats.speedMph.round(), 45);
+      expect(stats.tireSquealLevel, 0.0);
+
+      const squealStats = EngineStats(tireSquealLevel: 0.42);
+      expect(squealStats.tireSquealLevel, 0.42);
 
       const neutralStats = EngineStats(gear: 0);
       expect(neutralStats.gearDisplay, 'N');
@@ -52,7 +56,7 @@ void main() {
   });
 
   group('Drive Mode and Telemetry Widgets', () {
-    testWidgets('UI switches drive mode and adjusts aggressiveness', (tester) async {
+    testWidgets('UI switches drive mode and adjusts aggressiveness and tire squeal sensitivity', (tester) async {
       final calls = <MethodCall>[];
       var playing = false;
 
@@ -67,6 +71,7 @@ void main() {
                 'rpm': 2500.0,
                 'gear': 2,
                 'vehicleSpeed': 15.0,
+                'tireSquealLevel': 0.35,
               };
             }
             return null;
@@ -92,7 +97,9 @@ void main() {
       await tester.pump();
 
       expect(find.byKey(const Key('sim-speed')), findsOneWidget);
+      expect(find.byKey(const Key('sim-lateral-g')), findsOneWidget);
       expect(find.byKey(const Key('shift-aggressiveness')), findsOneWidget);
+      expect(find.byKey(const Key('tire-squeal-sensitivity')), findsOneWidget);
 
       // Adjust aggressiveness slider
       tester.widget<Slider>(find.byKey(const Key('shift-aggressiveness'))).onChanged!(0.9);
@@ -102,11 +109,19 @@ void main() {
       expect(aggrCall.arguments['aggressiveness'], 0.9);
       expect(aggrCall.arguments['driveMode'], DriveMode.simDrive.index);
 
+      // Adjust tire squeal sensitivity slider
+      tester.widget<Slider>(find.byKey(const Key('tire-squeal-sensitivity'))).onChanged!(0.75);
+      await tester.pump();
+
+      final sensCall = calls.lastWhere((c) => c.method == 'driveTelemetry');
+      expect(sensCall.arguments['tireSquealSensitivity'], 0.75);
+
       // Switch to GPS Drive mode
       await tester.tap(find.text('GPS DRIVE'));
       await tester.pump();
 
       expect(find.text('Automatic transmission driven by phone GPS speed & accelerometer g-force.'), findsOneWidget);
+      expect(find.byKey(const Key('tire-squeal-sensitivity')), findsOneWidget);
       expect(calls.lastWhere((c) => c.method == 'driveTelemetry').arguments['driveMode'], DriveMode.gpsDrive.index);
 
       await tester.pumpWidget(const SizedBox());

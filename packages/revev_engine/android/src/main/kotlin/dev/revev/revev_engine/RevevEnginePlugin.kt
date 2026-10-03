@@ -32,6 +32,8 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
 
     private var currentSpeedMps = 0.0f
     private var currentAccelMps2 = 0.0f
+    private var currentLateralAccelMps2 = 0.0f
+    private var currentTireSquealSensitivity = 0.5f
     private var currentAggressiveness = 0.5f
     private var currentDriveMode = 0
     private var mountingPositionName = "trayTopForward"
@@ -41,7 +43,14 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
     private external fun nativeShutdown()
     private external fun nativeControls(throttle: Float, volume: Float)
     private external fun nativeListeningMix(mode: Int, strength: Float)
-    private external fun nativeDriveTelemetry(speedMps: Float, accelMps2: Float, aggressiveness: Float, driveMode: Int)
+    private external fun nativeDriveTelemetry(
+        speedMps: Float,
+        accelMps2: Float,
+        aggressiveness: Float,
+        driveMode: Int,
+        lateralAccelMps2: Float,
+        tireSquealSensitivity: Float
+    )
     private external fun nativeStats(): DoubleArray
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -59,7 +68,7 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
 
     private fun prepareEngines(): String {
         // Version this directory when bundled definitions change. Never load user scripts.
-        val root = File(context.filesDir, "engine-library-v3")
+        val root = File(context.filesDir, "engine-library-v4")
         if (!File(root, ".ready").exists()) {
             fun copy(asset: String, target: File) {
                 val children = context.assets.list(asset) ?: emptyArray()
@@ -115,8 +124,21 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
             "uprightPortrait", "uprightLandscapeLeft", "uprightLandscapeRight" -> -z
             else -> y
         }
+        val lateralAccel = when (mountingPositionName) {
+            "trayTopForward", "trayTopRearward", "uprightPortrait" -> kotlin.math.abs(x)
+            "trayTopLeft", "trayTopRight", "uprightLandscapeLeft", "uprightLandscapeRight" -> kotlin.math.abs(y)
+            else -> kotlin.math.abs(x)
+        }
         currentAccelMps2 = forwardAccel
-        nativeDriveTelemetry(currentSpeedMps, currentAccelMps2, currentAggressiveness, currentDriveMode)
+        currentLateralAccelMps2 = lateralAccel
+        nativeDriveTelemetry(
+            currentSpeedMps,
+            currentAccelMps2,
+            currentAggressiveness,
+            currentDriveMode,
+            currentLateralAccelMps2,
+            currentTireSquealSensitivity
+        )
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -126,7 +148,14 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
         if (location.hasSpeed()) {
             currentSpeedMps = location.speed
         }
-        nativeDriveTelemetry(currentSpeedMps, currentAccelMps2, currentAggressiveness, currentDriveMode)
+        nativeDriveTelemetry(
+            currentSpeedMps,
+            currentAccelMps2,
+            currentAggressiveness,
+            currentDriveMode,
+            currentLateralAccelMps2,
+            currentTireSquealSensitivity
+        )
     }
 
     @Deprecated("Deprecated in Java")
@@ -189,6 +218,8 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
                 currentAccelMps2 = (call.argument<Number>("accelMps2") ?: currentAccelMps2).toFloat()
                 currentAggressiveness = (call.argument<Number>("aggressiveness") ?: currentAggressiveness).toFloat()
                 currentDriveMode = (call.argument<Number>("driveMode") ?: currentDriveMode).toInt()
+                call.argument<Number>("lateralAccelMps2")?.let { currentLateralAccelMps2 = it.toFloat() }
+                call.argument<Number>("tireSquealSensitivity")?.let { currentTireSquealSensitivity = it.toFloat() }
                 call.argument<String>("mountingPosition")?.let { mountingPositionName = it }
 
                 if (currentDriveMode == 1 && !sensorsActive) {
@@ -197,7 +228,14 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
                     stopSensors()
                 }
 
-                nativeDriveTelemetry(currentSpeedMps, currentAccelMps2, currentAggressiveness, currentDriveMode)
+                nativeDriveTelemetry(
+                    currentSpeedMps,
+                    currentAccelMps2,
+                    currentAggressiveness,
+                    currentDriveMode,
+                    currentLateralAccelMps2,
+                    currentTireSquealSensitivity
+                )
                 EngineBridge.updateState { it.copy(driveMode = currentDriveMode, shiftAggressiveness = currentAggressiveness) }
                 result.success(null)
             }
@@ -208,12 +246,14 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
                 val boost = if (s.size > 6) s[6] else 0.0
                 val gear = if (s.size > 7) s[7].toInt() else 0
                 val vehicleSpeed = if (s.size > 8) s[8] else 0.0
+                val tireSquealLevel = if (s.size > 9) s[9] else 0.0
                 EngineBridge.updateState {
                     it.copy(
                         rpm = rpm,
                         gear = gear,
                         vehicleSpeedMps = vehicleSpeed,
                         boostBar = boost,
+                        tireSquealLevel = tireSquealLevel,
                         playing = playing,
                         stopping = (playing && s[5] != 0.0),
                         failed = (s[3] != 0.0)
@@ -228,7 +268,8 @@ class RevevEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Sensor
                     "stopping" to (playing && s[5] != 0.0),
                     "boost" to boost,
                     "gear" to gear,
-                    "vehicleSpeed" to vehicleSpeed
+                    "vehicleSpeed" to vehicleSpeed,
+                    "tireSquealLevel" to tireSquealLevel
                 ))
             }
             else -> result.notImplemented()
