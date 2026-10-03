@@ -156,10 +156,23 @@ void EngineRuntime::run() {
                     sim.m_dyno.m_enabled = false;
                     targetThrottle = !longCrank && !started && elapsed < crankTimeout ? 0.08f : 0.0f;
                 } else {
-                    sim.m_dyno.m_enabled = true;
-                    sim.m_dyno.m_hold = true;
-                    sim.m_dyno.m_rotationSpeed = units::rpm(transmissionModel.targetRpm());
+                    const bool carMoving = speed > 0.5f;
+                    sim.m_dyno.m_enabled = carMoving;
+                    if (carMoving) {
+                        sim.m_dyno.m_hold = true;
+                        sim.m_dyno.m_rotationSpeed = units::rpm(transmissionModel.targetRpm());
+                    }
                     targetThrottle = transmissionModel.simulatedThrottle();
+
+                    // Closed-loop governor assist when driving in gear:
+                    // If target RPM is above current engine RPM, supply sufficient throttle so
+                    // combustion overcomes internal engine drag and reaches the target gear RPM.
+                    const float currentRpm = static_cast<float>(preset.engine->getRpm());
+                    const float targetRpm = transmissionModel.targetRpm();
+                    if (carMoving && targetRpm > currentRpm + 40.0f && !transmissionModel.isShifting()) {
+                        const float rpmLag = (targetRpm - currentRpm) / 1000.0f;
+                        targetThrottle = std::min(1.0f, targetThrottle + std::clamp(rpmLag * 0.35f, 0.0f, 0.45f));
+                    }
                 }
             }
 

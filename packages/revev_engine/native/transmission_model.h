@@ -97,9 +97,12 @@ public:
             if (gear_ < gearCount_) {
                 const float nextRatio = ratios_[gear_];
                 const float nextGearRpm = calcDrivetrainRpm(speedKmh, nextRatio);
+                const float gearLugFloor = std::max(idleRpm_ * 1.5f, 1350.0f + (gear_ - 1) * 150.0f);
+                const float cruiseShiftUpRpm = minShiftRpm + 600.0f * effectiveAggression;
                 const bool cruiseUpshift = (normAccel < 0.20f && accelMps2 >= -0.2f &&
-                                            nextGearRpm >= std::max(idleRpm_ * 1.5f, 1400.0f));
-                if (currentGearRpm >= shiftUpRpm || cruiseUpshift) {
+                                            currentGearRpm >= cruiseShiftUpRpm &&
+                                            nextGearRpm >= gearLugFloor);
+                if ((currentGearRpm >= shiftUpRpm && nextGearRpm >= gearLugFloor) || cruiseUpshift) {
                     shouldUpshift = true;
                 }
             }
@@ -162,15 +165,35 @@ public:
                 simulatedThrottle_ = 0.55f;
             }
         } else {
-            if (accelMps2 > 0.05f) {
-                // Positive acceleration: throttle proportional to demand
-                simulatedThrottle_ = std::clamp(0.15f + normAccel * 0.85f, 0.0f, 1.0f);
-            } else if (accelMps2 < -0.3f) {
-                // Braking: closed throttle
-                simulatedThrottle_ = 0.0f;
+            const float rpmFrac = std::clamp((baseRpm - idleRpm_) / (redlineRpm_ - idleRpm_), 0.0f, 1.0f);
+            const float cruiseThrottle = 0.12f + 0.28f * rpmFrac;
+
+            if (driveMode == 2) {
+                // Simulated Drive (Speed Sim):
+                // Direct response to user's manual throttle slider when set.
+                if (manualThrottle > 0.01f) {
+                    simulatedThrottle_ = std::clamp(manualThrottle, 0.0f, 1.0f);
+                } else if (speedKmh > 1.0f) {
+                    // Cruising when speed slider is active without manual throttle
+                    simulatedThrottle_ = cruiseThrottle;
+                } else {
+                    simulatedThrottle_ = 0.0f;
+                }
             } else {
-                // Cruising / steady speed: light maintenance throttle
-                simulatedThrottle_ = 0.12f;
+                // GPS Drive:
+                if (accelMps2 > 0.05f) {
+                    // Positive acceleration: throttle proportional to demand
+                    simulatedThrottle_ = std::clamp(cruiseThrottle + normAccel * (1.0f - cruiseThrottle), 0.0f, 1.0f);
+                } else if (accelMps2 < -0.3f) {
+                    // Braking: closed throttle / overrun pops
+                    simulatedThrottle_ = 0.02f;
+                } else {
+                    // Cruising / steady speed: light maintenance throttle
+                    simulatedThrottle_ = cruiseThrottle;
+                }
+                if (manualThrottle > 0.01f) {
+                    simulatedThrottle_ = std::max(simulatedThrottle_, manualThrottle);
+                }
             }
         }
 

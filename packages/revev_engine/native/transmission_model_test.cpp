@@ -91,7 +91,23 @@ int main() {
     tx.configure(7, ferrariRatios, 4.50, 12000.0, 1000.0, 0.31);
     require(tx.gearCount() == 7, "Ferrari must have 7 gears");
 
-    // 8. Non-finite safety
+    // 8. Low speed gear selection: 45 km/h (28 mph) must NOT lug in 5th gear
+    tx.configure(5, carreraRatios, 3.44, 8000.0, 900.0, 0.31);
+    for (int step = 0; step < 500; ++step) {
+        tx.update(0.01f, 12.5f, 0.0f, 0.5f, 0.25f, 2); // 12.5 m/s = 45 km/h, driveMode 2 (Speed Sim)
+    }
+    std::printf("45 km/h Speed Sim gear: %d, RPM: %.1f, throttle: %.2f\n", tx.gear(), tx.targetRpm(), tx.simulatedThrottle());
+    require(tx.gear() <= 3, "45 km/h must not upshift to 4th or 5th gear");
+    require(tx.targetRpm() > 1800.0f, "45 km/h RPM must not lug at idle");
+    require(std::abs(tx.simulatedThrottle() - 0.25f) < 0.01f, "Speed Sim must honor 25% manual throttle");
+
+    // 9. Speed Sim manual throttle changes
+    tx.update(0.01f, 12.5f, 0.0f, 0.5f, 0.75f, 2);
+    require(std::abs(tx.simulatedThrottle() - 0.75f) < 0.01f, "Speed Sim must honor 75% manual throttle");
+    tx.update(0.01f, 12.5f, 0.0f, 0.5f, 0.0f, 2);
+    require(tx.simulatedThrottle() > 0.10f, "Speed Sim at speed without manual throttle should provide cruise floor");
+
+    // 10. Non-finite safety
     tx.update(0.01f, NAN, INFINITY, NAN, 0.0f, 1);
     require(std::isfinite(tx.targetRpm()), "Non-finite RPM output");
     require(std::isfinite(tx.simulatedThrottle()), "Non-finite throttle output");
