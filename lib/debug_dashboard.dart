@@ -13,7 +13,7 @@ class DebugSession {
   String status = 'No session';
   String? error;
   String preset = 'porsche/911_carrera_32';
-  String mountingPosition = 'trayTopForward';
+  String mountingPosition = 'auto';
   final List<Map<String, Object>> listeningChanges = [];
   String testResult = 'Manual session';
   final List<Map<String, Object>> testPhases = [];

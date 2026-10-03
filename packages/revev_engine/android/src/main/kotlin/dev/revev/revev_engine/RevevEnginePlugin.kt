@@ -20,18 +20,25 @@ import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.PluginRegistry
 
-class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler, SensorEventListener, LocationListener, EngineBridge.CommandHandler {
+class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler, SensorEventListener, LocationListener, EngineBridge.CommandHandler, PluginRegistry.RequestPermissionsResultListener {
+    companion object {
+        private const val LOCATION_PERMISSION_REQUEST_CODE = 1001
+    }
+
     private lateinit var channel: MethodChannel
     private lateinit var audioManager: AudioManager
     private var playing = false
     private lateinit var context: Context
     private var activity: Activity? = null
+    private var activityBinding: ActivityPluginBinding? = null
     private var focusRequest: AudioFocusRequest? = null
 
     private var locationManager: LocationManager? = null
     private var sensorManager: SensorManager? = null
     private var accelSensor: Sensor? = null
+    private var gravitySensor: Sensor? = null
     private var sensorsActive = false
 
     private var currentSpeedMps = 0.0f
@@ -40,7 +47,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     private var currentTireSquealSensitivity = 0.5f
     private var currentAggressiveness = 0.5f
     private var currentDriveMode = 0
-    private var mountingPositionName = "trayTopForward"
+    private var mountingPositionName = "auto"
 
     // Gravity isolation filter for raw accelerometer
     private val gravity = FloatArray(3)
@@ -79,6 +86,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         sensorManager = binding.applicationContext.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         accelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
             ?: sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        gravitySensor = sensorManager?.getDefaultSensor(Sensor.TYPE_GRAVITY)
         channel = MethodChannel(binding.binaryMessenger, "revev_engine")
         channel.setMethodCallHandler(this)
         EngineBridge.commandHandler = this
@@ -86,24 +94,48 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activity = binding.activity
+        activityBinding = binding
+        binding.addRequestPermissionsResultListener(this)
         if (playing && currentDriveMode == 1 && sensorsActive) {
             requestLocationUpdatesIfPermitted()
         }
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
+        activityBinding?.removeRequestPermissionsResultListener(this)
+        activityBinding = null
         activity = null
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
         activity = binding.activity
+        activityBinding = binding
+        binding.addRequestPermissionsResultListener(this)
         if (playing && currentDriveMode == 1 && sensorsActive) {
             requestLocationUpdatesIfPermitted()
         }
     }
 
     override fun onDetachedFromActivity() {
+        activityBinding?.removeRequestPermissionsResultListener(this)
+        activityBinding = null
         activity = null
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray): Boolean {
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            val granted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            if (granted) {
+                if (playing && currentDriveMode == 1) {
+                    startSensors()
+                } else if (hasLocationPermission()) {
+                    startLocationUpdates()
+                }
+            }
+            channel.invokeMethod("onLocationPermissionResult", mapOf("granted" to granted))
+            return true
+        }
+        return false
     }
 
     private fun prepareEngines(): String {
@@ -142,25 +174,22 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         accelSensor?.let {
             sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
+        gravitySensor?.let {
+            sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+        }
 
         requestLocationUpdatesIfPermitted()
     }
 
-    private fun requestLocationUpdatesIfPermitted() {
+    private fun hasLocationPermission(): Boolean {
         val hasFine = context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         val hasCoarse = context.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        return hasFine || hasCoarse
+    }
 
-        if (hasFine || hasCoarse) {
-            try {
-                if (locationManager?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true) {
-                    locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 100L, 0.0f, this)
-                }
-                if (locationManager?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true) {
-                    locationManager?.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 250L, 0.0f, this)
-                }
-            } catch (_: SecurityException) {
-                // Graceful fallback
-            }
+    private fun requestLocationUpdatesIfPermitted() {
+        if (hasLocationPermission()) {
+            startLocationUpdates()
         } else {
             activity?.let { act ->
                 act.requestPermissions(
@@ -168,10 +197,45 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                         android.Manifest.permission.ACCESS_FINE_LOCATION,
                         android.Manifest.permission.ACCESS_COARSE_LOCATION
                     ),
-                    1001
+                    LOCATION_PERMISSION_REQUEST_CODE
                 )
             }
         }
+    }
+
+    private fun startLocationUpdates() {
+        if (!hasLocationPermission()) return
+        val mgr = locationManager ?: return
+        try {
+            val providers = mgr.allProviders ?: listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            for (provider in providers) {
+                if (provider == LocationManager.PASSIVE_PROVIDER) {
+                    try {
+                        mgr.requestLocationUpdates(provider, 100L, 0.0f, this, android.os.Looper.getMainLooper())
+                    } catch (_: Exception) {}
+                    continue
+                }
+                if (mgr.isProviderEnabled(provider)) {
+                    val minTime = if (provider == LocationManager.GPS_PROVIDER) 100L else 250L
+                    try {
+                        mgr.requestLocationUpdates(provider, minTime, 0.0f, this, android.os.Looper.getMainLooper())
+                    } catch (_: Exception) {}
+                }
+            }
+
+            for (provider in providers) {
+                try {
+                    val loc = mgr.getLastKnownLocation(provider)
+                    if (loc != null) {
+                        val ageMs = System.currentTimeMillis() - loc.time
+                        if (ageMs < 10000L) {
+                            onLocationChanged(loc)
+                            break
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        } catch (_: Exception) {}
     }
 
     private fun stopSensors() {
@@ -180,12 +244,20 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         sensorManager?.unregisterListener(this)
         try {
             locationManager?.removeUpdates(this)
-        } catch (_: SecurityException) {}
+        } catch (_: Exception) {}
         resetSensorFilters()
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
         if (event == null || currentDriveMode != 1 || !playing) return
+
+        if (event.sensor.type == Sensor.TYPE_GRAVITY) {
+            gravity[0] = event.values[0]
+            gravity[1] = event.values[1]
+            gravity[2] = event.values[2]
+            gravityInitialized = true
+            return
+        }
 
         val dt = if (lastSensorTimestampNs > 0L) {
             val delta = (event.timestamp - lastSensorTimestampNs) * 1e-9f
@@ -227,20 +299,46 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
             linearZ = rawZ
         }
 
-        // Transform device axes to vehicle forward & lateral acceleration based on mounting position
-        val rawForward = when (mountingPositionName) {
-            "trayTopForward" -> linearY
-            "trayTopRearward" -> -linearY
-            "trayTopLeft" -> -linearX
-            "trayTopRight" -> linearX
-            "uprightPortrait", "uprightLandscapeLeft", "uprightLandscapeRight" -> -linearZ
-            else -> linearY
+        // Project out vertical gravity component (road bumps, potholes) to isolate horizontal vehicle motion
+        val gravNormSq = gravity[0] * gravity[0] + gravity[1] * gravity[1] + gravity[2] * gravity[2]
+        val (horizX, horizY, horizZ) = if (gravNormSq > 25.0f) {
+            val gravNorm = kotlin.math.sqrt(gravNormSq)
+            val gx = gravity[0] / gravNorm
+            val gy = gravity[1] / gravNorm
+            val gz = gravity[2] / gravNorm
+            val vertDot = linearX * gx + linearY * gy + linearZ * gz
+            Triple(linearX - vertDot * gx, linearY - vertDot * gy, linearZ - vertDot * gz)
+        } else {
+            Triple(linearX, linearY, linearZ)
         }
 
-        val rawLateral = when (mountingPositionName) {
-            "trayTopForward", "trayTopRearward", "uprightPortrait" -> kotlin.math.abs(linearX)
-            "trayTopLeft", "trayTopRight", "uprightLandscapeLeft", "uprightLandscapeRight" -> kotlin.math.abs(linearY)
-            else -> kotlin.math.abs(linearX)
+        val effectiveMounting = if (mountingPositionName == "auto") {
+            val absGx = kotlin.math.abs(gravity[0])
+            val absGy = kotlin.math.abs(gravity[1])
+            val absGz = kotlin.math.abs(gravity[2])
+            when {
+                absGy >= absGz && absGy >= absGx -> "uprightPortrait"
+                absGx >= absGz && absGx > absGy -> "uprightLandscapeLeft"
+                else -> "trayTopForward"
+            }
+        } else {
+            mountingPositionName
+        }
+
+        // Transform device axes to vehicle forward & lateral acceleration based on mounting position
+        val rawForward = when (effectiveMounting) {
+            "trayTopForward" -> horizY
+            "trayTopRearward" -> -horizY
+            "trayTopLeft" -> -horizX
+            "trayTopRight" -> horizX
+            "uprightPortrait", "uprightLandscapeLeft", "uprightLandscapeRight" -> -horizZ
+            else -> horizY
+        }
+
+        val rawLateral = when (effectiveMounting) {
+            "trayTopForward", "trayTopRearward", "uprightPortrait" -> kotlin.math.abs(horizX)
+            "trayTopLeft", "trayTopRight", "uprightLandscapeLeft", "uprightLandscapeRight" -> kotlin.math.abs(horizY)
+            else -> kotlin.math.abs(horizX)
         }
 
         // Deadzone micro-vibrations (< 0.08 m/s^2)
@@ -280,6 +378,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
             currentLateralAccelMps2,
             currentTireSquealSensitivity
         )
+        EngineBridge.updateState { it.copy(vehicleSpeedMps = currentSpeedMps.toDouble()) }
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -290,14 +389,14 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         lastLocation = location
         lastGpsSpeedTimeMs = System.currentTimeMillis()
 
-        if (location.hasSpeed()) {
-            currentSpeedMps = location.speed
+        if (location.hasSpeed() && location.speed >= 0.0f) {
+            currentSpeedMps = if (location.speed < 0.3f) 0.0f else location.speed
         } else if (prev != null) {
             val dt = (location.time - prev.time) / 1000.0f
             if (dt > 0.05f) {
                 val derivedSpeed = location.distanceTo(prev) / dt
                 if (derivedSpeed >= 0.0f && derivedSpeed < 100.0f) {
-                    currentSpeedMps = derivedSpeed
+                    currentSpeedMps = if (derivedSpeed < 0.3f) 0.0f else derivedSpeed
                 }
             }
         }
@@ -311,6 +410,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
             currentLateralAccelMps2,
             currentTireSquealSensitivity
         )
+        EngineBridge.updateState { it.copy(vehicleSpeedMps = currentSpeedMps.toDouble()) }
     }
 
     @Deprecated("Deprecated in Java")
@@ -449,6 +549,28 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                     "vehicleSpeed" to vehicleSpeed,
                     "tireSquealLevel" to tireSquealLevel
                 ))
+            }
+            "hasLocationPermission" -> {
+                result.success(hasLocationPermission())
+            }
+            "requestLocationPermission" -> {
+                if (hasLocationPermission()) {
+                    if (playing && currentDriveMode == 1 && !sensorsActive) {
+                        startSensors()
+                    }
+                    result.success(true)
+                } else {
+                    activity?.let { act ->
+                        act.requestPermissions(
+                            arrayOf(
+                                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                android.Manifest.permission.ACCESS_COARSE_LOCATION
+                            ),
+                            LOCATION_PERMISSION_REQUEST_CODE
+                        )
+                        result.success(false)
+                    } ?: result.error("no_activity", "Activity not attached", null)
+                }
             }
             else -> result.notImplemented()
         }

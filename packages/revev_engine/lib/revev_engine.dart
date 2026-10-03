@@ -60,7 +60,7 @@ class RevevEngine {
     double accelMps2 = 0.0,
     double aggressiveness = 0.5,
     DriveMode driveMode = DriveMode.manual,
-    String mountingPosition = 'trayTopForward',
+    String mountingPosition = 'auto',
     double lateralAccelMps2 = 0.0,
     double tireSquealSensitivity = 0.5,
   }) => _channel.invokeMethod<void>('driveTelemetry', {
@@ -72,6 +72,17 @@ class RevevEngine {
         'lateralAccelMps2': lateralAccelMps2,
         'tireSquealSensitivity': tireSquealSensitivity,
       });
+
+  Future<bool> hasLocationPermission() async {
+    final granted = await _channel.invokeMethod<bool>('hasLocationPermission');
+    return granted ?? false;
+  }
+
+  Future<bool> requestLocationPermission() async {
+    final granted = await _channel.invokeMethod<bool>('requestLocationPermission');
+    return granted ?? false;
+  }
+
   Future<EngineStats> stats() async {
     final data = await _channel.invokeMapMethod<String, dynamic>('stats') ?? {};
     return EngineStats(
@@ -94,6 +105,7 @@ class RevevEngine {
     void Function(String preset)? onRemoteSetPreset,
     void Function(DriveMode mode)? onRemoteSetDriveMode,
     void Function(double aggressiveness)? onRemoteSetAggressiveness,
+    void Function(bool granted)? onLocationPermissionResult,
   }) {
     _channel.setMethodCallHandler((call) async {
       switch (call.method) {
@@ -117,6 +129,10 @@ class RevevEngine {
         case 'onRemoteSetAggressiveness':
           final aggr = (call.arguments?['aggressiveness'] as num?)?.toDouble();
           if (aggr != null) onRemoteSetAggressiveness?.call(aggr);
+          break;
+        case 'onLocationPermissionResult':
+          final granted = call.arguments?['granted'] as bool? ?? false;
+          onLocationPermissionResult?.call(granted);
           break;
       }
     });

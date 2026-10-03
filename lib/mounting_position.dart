@@ -1,6 +1,10 @@
 /// Physical phone positions for comparing test sessions. These are not sensor
 /// coordinate transforms: motion control and calibration are not implemented.
 enum MountingPosition {
+  auto(
+    'Auto · detect orientation',
+    'Automatically detects mount orientation (dash/vent mount or console tray) using the gravity vector.',
+  ),
   trayTopForward(
     'Tray · top toward dashboard',
     'Screen up; charging port toward the seats. A slight tray tilt is fine.',
