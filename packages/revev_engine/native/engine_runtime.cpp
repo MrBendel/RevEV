@@ -117,7 +117,7 @@ void EngineRuntime::run() {
         }
         while (running_) {
             auto w = write_.load(std::memory_order_relaxed);
-            if (w - read_.load(std::memory_order_acquire) >= 1323) {
+            if (w - read_.load(std::memory_order_acquire) >= 4410) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 continue;
             }
@@ -184,9 +184,9 @@ void EngineRuntime::run() {
                 if (!std::isfinite(pcm[i])) throw std::runtime_error("Non-finite engine audio");
                 const float turboSound = turboModel.processSample();
                 const float squealSound = tireSquealModel.processSample();
-                const float mixed = AudioMixer::mix(pcm[i], turboSound, squealSound);
+                const float mixed = AudioMixer::mix(pcm[i] * 0.75f, turboSound, squealSound);
                 const float shaped = listeningMix.process(mixed, mode, strength, filteredThrottle);
-                buffer_[(w + i) % capacity] = limiter.process(AudioMixer::softCompress(shaped)) * fade;
+                buffer_[(w + i) % capacity] = limiter.process(shaped) * fade;
             }
             write_.store(w + pcm.size(), std::memory_order_release);
             workMs_ = std::chrono::duration<float, std::milli>(clock::now() - t).count();

@@ -97,7 +97,7 @@ void Synthesizer::initializeImpulseResponse(
         }
     }
 
-    const unsigned int sampleCount = std::min(10000U, clippedLength);
+    const unsigned int sampleCount = std::min(2500U, clippedLength);
     m_filters[index].convolution.initialize(sampleCount);
     for (unsigned int i = 0; i < sampleCount; ++i) {
         m_filters[index].convolution.getImpulseResponse()[i] =
