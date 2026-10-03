@@ -381,7 +381,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
             currentLateralAccelMps2,
             currentTireSquealSensitivity
         )
-        EngineBridge.updateState { it.copy(vehicleSpeedMps = currentSpeedMps.toDouble()) }
+        EngineBridge.updateState { it.copy(vehicleSpeedMps = currentSpeedMps.toDouble(), accelMps2 = currentAccelMps2.toDouble()) }
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -413,7 +413,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
             currentLateralAccelMps2,
             currentTireSquealSensitivity
         )
-        EngineBridge.updateState { it.copy(vehicleSpeedMps = currentSpeedMps.toDouble()) }
+        EngineBridge.updateState { it.copy(vehicleSpeedMps = currentSpeedMps.toDouble(), accelMps2 = currentAccelMps2.toDouble()) }
     }
 
     @Deprecated("Deprecated in Java")
@@ -423,7 +423,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         stopSensors()
         nativeStop()
         playing = false
-        EngineBridge.updateState { it.copy(playing = false, stopping = false, rpm = 0.0, gear = 0, vehicleSpeedMps = 0.0, boostBar = 0.0) }
+        EngineBridge.updateState { it.copy(playing = false, stopping = false, rpm = 0.0, gear = 0, vehicleSpeedMps = 0.0, accelMps2 = 0.0, boostBar = 0.0) }
         focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         focusRequest = null
     }
@@ -528,11 +528,13 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                 val gear = if (s.size > 7) s[7].toInt() else 0
                 val vehicleSpeed = if (s.size > 8) s[8] else 0.0
                 val tireSquealLevel = if (s.size > 9) s[9] else 0.0
+                val accelMps2 = if (s.size > 10) s[10] else currentAccelMps2.toDouble()
                 EngineBridge.updateState {
                     it.copy(
                         rpm = rpm,
                         gear = gear,
                         vehicleSpeedMps = vehicleSpeed,
+                        accelMps2 = accelMps2,
                         boostBar = boost,
                         tireSquealLevel = tireSquealLevel,
                         playing = playing,
@@ -550,6 +552,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                     "boost" to boost,
                     "gear" to gear,
                     "vehicleSpeed" to vehicleSpeed,
+                    "accelMps2" to accelMps2,
                     "tireSquealLevel" to tireSquealLevel
                 ))
             }

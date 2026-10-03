@@ -52,6 +52,7 @@ public:
     bool failed() const { return failed_.load(); }
     int gear() const { return gear_.load(); }
     float vehicleSpeed() const { return speedMps_.load(); }
+    float accelMps2() const { return accelMps2_.load(); }
     int driveMode() const { return driveMode_.load(); }
     float lateralAccel() const { return lateralAccelMps2_.load(); }
     float tireSquealSensitivity() const { return tireSquealSensitivity_.load(); }

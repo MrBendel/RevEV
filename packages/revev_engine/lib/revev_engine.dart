@@ -32,13 +32,15 @@ class EngineStats {
     this.gear = 0,
     this.vehicleSpeed = 0.0,
     this.tireSquealLevel = 0.0,
+    this.accelMps2 = 0.0,
   });
-  final double rpm, workMs, boost, vehicleSpeed, tireSquealLevel;
+  final double rpm, workMs, boost, vehicleSpeed, tireSquealLevel, accelMps2;
   final int underruns, gear;
   final bool playing, failed, stopping;
 
   double get speedKmh => vehicleSpeed * 3.6;
   double get speedMph => vehicleSpeed * 2.23694;
+  double get accelG => accelMps2 / 9.80665;
   String get gearDisplay => gear <= 0 ? 'N' : 'D$gear';
 }
 
@@ -96,6 +98,7 @@ class RevevEngine {
       gear: (data['gear'] as num? ?? 0).toInt(),
       vehicleSpeed: (data['vehicleSpeed'] as num? ?? 0).toDouble(),
       tireSquealLevel: (data['tireSquealLevel'] as num? ?? 0).toDouble(),
+      accelMps2: (data['accelMps2'] as num? ?? 0).toDouble(),
     );
   }
 

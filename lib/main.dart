@@ -62,6 +62,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
   double _tireSquealSensitivity = 0.5;
   double _simulatedSpeedKmh = 0.0;
   double _simulatedLateralG = 0.0;
+  double _simulatedAccel = 0.0;
   double _lastSimSpeed = 0.0;
   DateTime _lastSpeedTime = DateTime.now();
   EngineStats _stats = const EngineStats();
@@ -140,8 +141,11 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
     if (_driveMode == DriveMode.simDrive) {
       if (dt > 0.001) {
         accel = ((_simulatedSpeedKmh - _lastSimSpeed) / 3.6) / dt;
+        _simulatedAccel = accel;
       }
       _lastSimSpeed = _simulatedSpeedKmh;
+    } else {
+      _simulatedAccel = 0.0;
     }
     final speedMps = _driveMode == DriveMode.simDrive
         ? _simulatedSpeedKmh / 3.6
@@ -579,6 +583,12 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                             speedKmh: _driveMode == DriveMode.simDrive
                                 ? _simulatedSpeedKmh
                                 : _stats.speedKmh,
+                            speedMps: _driveMode == DriveMode.simDrive
+                                ? (_simulatedSpeedKmh / 3.6)
+                                : _stats.vehicleSpeed,
+                            accelMps2: _driveMode == DriveMode.simDrive
+                                ? _simulatedAccel
+                                : _stats.accelMps2,
                           ),
                           const SizedBox(height: 4),
                           Row(
