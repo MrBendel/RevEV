@@ -41,6 +41,10 @@ void EngineRuntime::stop() {
     gear_ = 0;
     speedMps_ = 0.0f;
     accelMps2_ = 0.0f;
+    read_ = 0;
+    write_ = 0;
+    buffer_.fill(0.0f);
+    gain_ = 0.0f;
 }
 void EngineRuntime::setThrottle(float v) {
     if (std::isfinite(v)) throttle_ = std::clamp(v, 0.0f, 1.0f);
@@ -55,7 +59,12 @@ void EngineRuntime::render(float *out, int frames) {
     const float target = volume_.load(std::memory_order_relaxed);
     for (int i = 0; i < frames; ++i) {
         gain_ += (target - gain_) * 0.002f;
-        out[i] = i < static_cast<int>(count) ? buffer_[(r + i) % capacity] * gain_ : 0;
+        if (i < static_cast<int>(count)) {
+            out[i] = buffer_[(r + i) % capacity] * gain_;
+        } else {
+            // Apply exponential decay to 0 on underrun instead of a harsh rectangular step to zero
+            out[i] = (i > 0) ? out[i - 1] * 0.85f : 0.0f;
+        }
     }
     read_.store(r + count, std::memory_order_release);
     if (!done_ && count < static_cast<uint32_t>(frames)) ++underruns_;

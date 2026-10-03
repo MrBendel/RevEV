@@ -18,6 +18,12 @@ public:
     void shutdown() { stopping_ = true; throttle_ = 0; }
     bool stopping() const { return stopping_.load(); }
     bool finished() const { return done_.load() && read_.load() == write_.load(); }
+    uint32_t availableFrames() const {
+        const auto w = write_.load(std::memory_order_acquire);
+        const auto r = read_.load(std::memory_order_relaxed);
+        return w > r ? (w - r) : 0;
+    }
+    bool isReadyToRender() const { return availableFrames() >= 441; }
     void stop();
     void setThrottle(float value);
     void setVolume(float value);

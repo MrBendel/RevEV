@@ -117,6 +117,9 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     }
 
     override fun onDetachedFromActivity() {
+        if (playing) {
+            stop()
+        }
         activityBinding?.removeRequestPermissionsResultListener(this)
         activityBinding = null
         activity = null

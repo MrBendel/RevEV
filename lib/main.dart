@@ -410,6 +410,12 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       unawaited(_pause());
+    } else if (state == AppLifecycleState.resumed) {
+      if (mounted && !_stats.playing) {
+        setState(() {
+          _error = null;
+        });
+      }
     }
   }
 
