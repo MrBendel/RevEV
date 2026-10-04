@@ -83,7 +83,8 @@ void main() {
       expect(content, contains('deadbandForward'));
 
       // Velocity dead-reckoning fallback
-      expect(content, contains('estimatedSpeedMps'));
+      expect(content, contains('motion.step(event.timestamp * 1e-9'));
+      expect(content, contains('motion.gps(now, fixTime, speed, accuracy)'));
     });
 
     test('RevevEnginePlugin.kt starts sensors on engine start and drive mode changes', () {

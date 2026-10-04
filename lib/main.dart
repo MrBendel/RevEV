@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'dashboard.dart';
 import 'debug_dashboard.dart';
 import 'mounting_position.dart';
+import 'drive_test.dart';
+import 'drive_test_panel.dart';
 
 import 'package:flutter/material.dart';
 import 'package:revev_engine/revev_engine.dart';
@@ -52,6 +54,14 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
   final _engine = RevevEngine();
   final _debug = DebugSession();
   final _sessionClock = Stopwatch();
+  final _driveClock = Stopwatch();
+  final _scenarioClock = Stopwatch();
+  DriveRecording? _driveRecording;
+  DriveScenario? _driveScenario;
+  int _lastReplayGpsTick = -1;
+  bool _firstReplaySample = true;
+  String? _drivePhase;
+  bool get _driveActive => _driveClock.isRunning;
   Timer? _poll;
   Timer? _testTimer;
   int _testGeneration = 0;
@@ -99,6 +109,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
         }
       },
       onRemoteSetDriveMode: (mode) {
+        _finishDriveRecording('Interrupted by mode change');
         setState(() => _driveMode = mode);
         if (mode == DriveMode.gpsDrive && !_hasLocationPermission) {
           unawaited(_requestLocationPermission());
@@ -133,7 +144,8 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-  Future<void> _sendDriveTelemetry() async {
+  Future<void> _sendDriveTelemetry({Map<String, Object?>? testSample}) async {
+    if (_driveScenario != null && testSample == null) return;
     final now = DateTime.now();
     final dt = now.difference(_lastSpeedTime).inMilliseconds / 1000.0;
     _lastSpeedTime = now;
@@ -162,8 +174,55 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
         mountingPosition: _mountingPosition.name,
         lateralAccelMps2: lateralAccel,
         tireSquealSensitivity: _tireSquealSensitivity,
+        testSample: testSample,
       );
-    } catch (_) {}
+    } catch (_) {
+      if (testSample != null) rethrow;
+    }
+  }
+
+  void _finishDriveRecording(String status) {
+    if (!_driveActive) return;
+    _driveRecording?.status = status;
+    _driveClock.stop();
+    _scenarioClock.stop();
+    _driveScenario = null;
+    _drivePhase = status;
+    _simulatedSpeedKmh = 0;
+    _simulatedAccel = 0;
+    _lastSimSpeed = 0;
+  }
+
+  void _newDriveRecording(String kind) {
+    _driveRecording = DriveRecording(
+      kind: kind,
+      preset: _preset,
+      mount: _mountingPosition.name,
+      aggressiveness: _shiftAggressiveness,
+      volume: _volume,
+    );
+    _driveClock
+      ..reset()
+      ..start();
+    _drivePhase = 'Recording';
+  }
+
+  Future<void> _runDriveScenario(DriveScenario scenario) async {
+    if (_busy || _stats.playing || _testing || _driveActive) return;
+    _simulatedSpeedKmh = 0;
+    _simulatedLateralG = 0;
+    _lastSimSpeed = 0;
+    await _toggle();
+    if (!mounted || !_stats.playing || _driveMode != DriveMode.simDrive) return;
+    setState(() {
+      _newDriveRecording(scenario.label);
+      _driveScenario = scenario;
+      _scenarioClock
+        ..stop()
+        ..reset();
+      _lastReplayGpsTick = -1;
+      _firstReplaySample = true;
+    });
   }
 
   Future<void> _refresh() async {
@@ -171,10 +230,48 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
     _polling = true;
     final session = _session;
     try {
+      DriveInput? input;
+      final elapsed = _driveClock.elapsedMicroseconds / 1000000.0;
+      if (_driveActive && _driveScenario != null) {
+        input = _driveScenario!.at(
+          _scenarioClock.elapsedMicroseconds / 1000000.0,
+        );
+        final tick = input.seconds.floor();
+        await _sendDriveTelemetry(
+          testSample: input.packet(
+            gpsTick: tick != _lastReplayGpsTick,
+            reset: _firstReplaySample,
+          ),
+        );
+        if (!mounted || session != _session || _busy) return;
+        _firstReplaySample = false;
+        _lastReplayGpsTick = tick;
+      }
       final stats = await _engine.stats();
       if (mounted && session == _session && !_busy) {
         setState(() {
           _stats = stats;
+          if (_driveActive) {
+            if (_driveScenario != null &&
+                !_scenarioClock.isRunning &&
+                stats.rpm >= 700) {
+              _scenarioClock.start();
+            }
+            _driveRecording!.add(elapsed, stats, input: input);
+            _drivePhase = input == null
+                ? 'Recording live drive · ${elapsed.toStringAsFixed(0)} s'
+                : !_scenarioClock.isRunning
+                ? 'Waiting for engine idle · ${elapsed.toStringAsFixed(0)} s'
+                : '${input.phase} · ${input.seconds.toStringAsFixed(1)} s · '
+                      '${input.gpsAvailable ? 'GPS fixes at 1 Hz' : 'GPS dropout'}';
+            if (input != null) {
+              _simulatedSpeedKmh = stats.speedKmh;
+              _simulatedAccel = stats.accelMps2;
+            }
+            if (!stats.playing || stats.stopping || stats.failed) {
+              _finishDriveRecording('Interrupted: engine stopped');
+            }
+          }
           _debug.record(stats, _sessionClock.elapsed);
           if (!stats.playing) _sessionClock.stop();
           if (!stats.playing) _throttle = 0;
@@ -186,7 +283,29 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
             _debug.error = _error;
           }
         });
-        if (_stats.playing && _driveMode == DriveMode.simDrive) {
+        if (_driveActive && input != null && stats.motion['replay'] != true) {
+          _finishDriveRecording('Failed: native replay is unavailable');
+          await _toggle(immediate: true);
+        } else if (_driveActive &&
+            input != null &&
+            !_scenarioClock.isRunning &&
+            elapsed >= 45) {
+          _finishDriveRecording(
+            'Failed: engine did not reach idle within 45 s',
+          );
+          await _toggle(immediate: true);
+        } else if (_driveActive &&
+            input != null &&
+            input.seconds >= _driveScenario!.duration) {
+          _finishDriveRecording('Completed');
+          await _toggle(immediate: true);
+        } else if (_driveActive &&
+            (elapsed >= 180 ||
+                _driveRecording!.samples.length >= DriveRecording.maxSamples)) {
+          setState(() => _finishDriveRecording('Completed: recording limit'));
+        } else if (_stats.playing &&
+            _driveMode == DriveMode.simDrive &&
+            !_driveActive) {
           await _sendDriveTelemetry();
         }
       }
@@ -196,6 +315,10 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
           _error = 'Unable to read engine status: $e';
           _debug.error = _error;
         });
+        if (_driveActive) {
+          _finishDriveRecording('Failed: diagnostics unavailable');
+          await _toggle(immediate: true);
+        }
         if (_testing) {
           _cancelTest('Failed: diagnostics unavailable');
           await _toggle(immediate: true);
@@ -215,6 +338,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
     });
     try {
       if (_stats.playing) {
+        _finishDriveRecording('Cancelled: engine stopped');
         _cancelTest('Cancelled');
         if (immediate) {
           await _engine.stop();
@@ -425,6 +549,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
 
   Future<void> _pause() async {
     ++_session;
+    _finishDriveRecording('Interrupted: app backgrounded');
     _cancelTest('Cancelled on background');
     _finishDebug('Stopped on background');
     try {
@@ -452,6 +577,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
   void dispose() {
     ++_session;
     _cancelTest('Cancelled');
+    _finishDriveRecording('Interrupted: app closed');
     _poll?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_engine.stop().catchError((Object _) {}));
@@ -695,7 +821,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                       );
                     },
                   ),
-                   const SizedBox(height: 14),
+                  const SizedBox(height: 14),
                   Center(
                     child: Container(
                       padding: const EdgeInsets.all(5),
@@ -822,12 +948,13 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                       ),
                     ],
                     selected: {_driveMode},
-                    onSelectionChanged: _busy || _testing
+                    onSelectionChanged: _busy || _testing || _driveActive
                         ? null
                         : (set) {
                             final mode = set.first;
                             setState(() => _driveMode = mode);
-                            if (mode == DriveMode.gpsDrive && !_hasLocationPermission) {
+                            if (mode == DriveMode.gpsDrive &&
+                                !_hasLocationPermission) {
                               unawaited(_requestLocationPermission());
                             }
                             _sendDriveTelemetry();
@@ -870,18 +997,29 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                       child: Slider(
                         key: const Key('shift-aggressiveness'),
                         value: _shiftAggressiveness,
-                        onChanged: (v) {
-                          setState(() => _shiftAggressiveness = v);
-                          _sendDriveTelemetry();
-                        },
+                        onChanged: _driveActive
+                            ? null
+                            : (v) {
+                                setState(() => _shiftAggressiveness = v);
+                                _sendDriveTelemetry();
+                              },
                       ),
                     ),
                     const Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('ECO', style: TextStyle(fontSize: 9, color: leatherMuted)),
-                        Text('SPORT', style: TextStyle(fontSize: 9, color: leatherMuted)),
-                        Text('RACE', style: TextStyle(fontSize: 9, color: leatherMuted)),
+                        Text(
+                          'ECO',
+                          style: TextStyle(fontSize: 9, color: leatherMuted),
+                        ),
+                        Text(
+                          'SPORT',
+                          style: TextStyle(fontSize: 9, color: leatherMuted),
+                        ),
+                        Text(
+                          'RACE',
+                          style: TextStyle(fontSize: 9, color: leatherMuted),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 18),
@@ -931,9 +1069,18 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                     const Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('OFF', style: TextStyle(fontSize: 9, color: leatherMuted)),
-                        Text('BALANCED', style: TextStyle(fontSize: 9, color: leatherMuted)),
-                        Text('TRACK', style: TextStyle(fontSize: 9, color: leatherMuted)),
+                        Text(
+                          'OFF',
+                          style: TextStyle(fontSize: 9, color: leatherMuted),
+                        ),
+                        Text(
+                          'BALANCED',
+                          style: TextStyle(fontSize: 9, color: leatherMuted),
+                        ),
+                        Text(
+                          'TRACK',
+                          style: TextStyle(fontSize: 9, color: leatherMuted),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 18),
@@ -972,7 +1119,12 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                         value: _simulatedSpeedKmh,
                         max: 180.0,
                         divisions: 36,
-                        onChanged: _stats.playing && !_stats.stopping && !_busy && !_testing
+                        onChanged:
+                            _stats.playing &&
+                                !_stats.stopping &&
+                                !_busy &&
+                                !_testing &&
+                                !_driveActive
                             ? (v) {
                                 setState(() => _simulatedSpeedKmh = v);
                                 _sendDriveTelemetry();
@@ -983,9 +1135,18 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                     const Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('0 MPH', style: TextStyle(fontSize: 9, color: leatherMuted)),
-                        Text('55 MPH', style: TextStyle(fontSize: 9, color: leatherMuted)),
-                        Text('112 MPH', style: TextStyle(fontSize: 9, color: leatherMuted)),
+                        Text(
+                          '0 MPH',
+                          style: TextStyle(fontSize: 9, color: leatherMuted),
+                        ),
+                        Text(
+                          '55 MPH',
+                          style: TextStyle(fontSize: 9, color: leatherMuted),
+                        ),
+                        Text(
+                          '112 MPH',
+                          style: TextStyle(fontSize: 9, color: leatherMuted),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 18),
@@ -1004,9 +1165,13 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                         Text(
                           '${_simulatedLateralG.toStringAsFixed(2)} G',
                           style: TextStyle(
-                            color: _stats.tireSquealLevel > 0.05 ? needleRed : leatherMuted,
+                            color: _stats.tireSquealLevel > 0.05
+                                ? needleRed
+                                : leatherMuted,
                             fontSize: 12,
-                            fontWeight: _stats.tireSquealLevel > 0.05 ? FontWeight.bold : FontWeight.normal,
+                            fontWeight: _stats.tireSquealLevel > 0.05
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                           ),
                         ),
                       ],
@@ -1023,7 +1188,12 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                         value: _simulatedLateralG,
                         max: 1.5,
                         divisions: 30,
-                        onChanged: _stats.playing && !_stats.stopping && !_busy && !_testing
+                        onChanged:
+                            _stats.playing &&
+                                !_stats.stopping &&
+                                !_busy &&
+                                !_testing &&
+                                !_driveActive
                             ? (v) {
                                 setState(() => _simulatedLateralG = v);
                                 _sendDriveTelemetry();
@@ -1034,16 +1204,28 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                     const Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('0.0 G', style: TextStyle(fontSize: 9, color: leatherMuted)),
-                        Text('0.75 G', style: TextStyle(fontSize: 9, color: leatherMuted)),
-                        Text('1.50 G', style: TextStyle(fontSize: 9, color: leatherMuted)),
+                        Text(
+                          '0.0 G',
+                          style: TextStyle(fontSize: 9, color: leatherMuted),
+                        ),
+                        Text(
+                          '0.75 G',
+                          style: TextStyle(fontSize: 9, color: leatherMuted),
+                        ),
+                        Text(
+                          '1.50 G',
+                          style: TextStyle(fontSize: 9, color: leatherMuted),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 18),
                   ],
                   if (_driveMode == DriveMode.gpsDrive) ...[
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xff22211f),
                         borderRadius: BorderRadius.circular(8),
@@ -1055,9 +1237,13 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                           Row(
                             children: [
                               Icon(
-                                _hasLocationPermission ? Icons.gps_fixed : Icons.gps_not_fixed,
+                                _hasLocationPermission
+                                    ? Icons.gps_fixed
+                                    : Icons.gps_not_fixed,
                                 size: 16,
-                                color: _hasLocationPermission ? const Color(0xffa5b889) : Colors.orangeAccent,
+                                color: _hasLocationPermission
+                                    ? const Color(0xffa5b889)
+                                    : Colors.orangeAccent,
                               ),
                               const SizedBox(width: 8),
                               Expanded(
@@ -1065,29 +1251,47 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                                   !_hasLocationPermission
                                       ? 'Location permission needed for GPS Drive'
                                       : _stats.playing
-                                          ? (_stats.vehicleSpeed > 0.5
-                                              ? 'GPS Active · ${_stats.speedMph.round()} MPH (${_stats.speedKmh.round()} km/h) · Gear ${_stats.gearDisplay}'
-                                              : 'GPS Active · Waiting for vehicle motion...')
-                                          : 'GPS Drive ready · Start engine to begin',
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: ivory),
+                                      ? (_stats.vehicleSpeed > 0.5
+                                            ? 'GPS Active · ${_stats.speedMph.round()} MPH (${_stats.speedKmh.round()} km/h) · Gear ${_stats.gearDisplay}'
+                                            : 'GPS Active · Waiting for vehicle motion...')
+                                      : 'GPS Drive ready · Start engine to begin',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: ivory,
+                                  ),
                                 ),
                               ),
                               if (!_hasLocationPermission)
                                 TextButton(
                                   onPressed: _requestLocationPermission,
                                   style: TextButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
                                     minimumSize: Size.zero,
-                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
                                   ),
-                                  child: const Text('ALLOW', style: TextStyle(color: needleRed, fontSize: 11, fontWeight: FontWeight.bold)),
+                                  child: const Text(
+                                    'ALLOW',
+                                    style: TextStyle(
+                                      color: needleRed,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                                 ),
                             ],
                           ),
                           const SizedBox(height: 6),
                           Text(
                             'Automatic transmission driven by phone GPS speed & accelerometer g-force.',
-                            style: const TextStyle(fontSize: 10, color: leatherMuted),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: leatherMuted,
+                            ),
                           ),
                         ],
                       ),
@@ -1130,7 +1334,8 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                           _stats.playing &&
                               !_stats.stopping &&
                               !_busy &&
-                              !_testing
+                              !_testing &&
+                              !_driveActive
                           ? (v) {
                               setState(() => _throttle = v);
                               _controls();
@@ -1178,7 +1383,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                           value: _volume,
                           semanticFormatterCallback: (v) =>
                               'Volume ${(v * 100).round()} percent',
-                          onChanged: _testing
+                          onChanged: _testing || _driveActive
                               ? null
                               : (v) {
                                   setState(() => _volume = v);
@@ -1258,6 +1463,44 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                     style: TextStyle(fontSize: 11, color: leatherMuted),
                   ),
                   const SizedBox(height: 10),
+                  if (_driveMode != DriveMode.manual)
+                    DriveTestPanel(
+                      stats: _stats,
+                      mode: _driveMode,
+                      recording: _driveRecording,
+                      active: _driveActive,
+                      phase: _drivePhase,
+                      onScenario:
+                          !_busy &&
+                              !_stats.playing &&
+                              !_testing &&
+                              !_driveActive &&
+                              defaultTargetPlatform == TargetPlatform.android
+                          ? (scenario) => unawaited(_runDriveScenario(scenario))
+                          : null,
+                      onRecord:
+                          !_busy &&
+                              _stats.playing &&
+                              !_stats.stopping &&
+                              !_driveActive
+                          ? () => setState(
+                              () => _newDriveRecording('Live GPS drive'),
+                            )
+                          : null,
+                      onStop: !_busy && _driveActive
+                          ? () {
+                              if (_driveScenario != null) {
+                                unawaited(_toggle(immediate: true));
+                              } else {
+                                setState(
+                                  () => _finishDriveRecording(
+                                    'Completed by user',
+                                  ),
+                                );
+                              }
+                            }
+                          : null,
+                    ),
                   DebugDashboard(
                     session: _debug,
                     testPhase: _testPhase,
@@ -1306,7 +1549,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                       const SizedBox(height: 8),
                       const Text(
                         'Recorded in your test report for this app session. '
-                        'Motion control and calibration are not active yet. '
+                        'This sets the sensor axes used for motion control. Auto cannot detect the heading of a flat phone. '
                         'Choose a position before starting the engine.',
                         style: TextStyle(fontSize: 11, color: leatherMuted),
                       ),

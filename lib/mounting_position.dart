@@ -1,5 +1,5 @@
-/// Physical phone positions for comparing test sessions. These are not sensor
-/// coordinate transforms: motion control and calibration are not implemented.
+/// Physical phone positions used to map sensor axes into vehicle motion.
+/// Auto estimates tilt from gravity; a flat phone still needs a known heading.
 enum MountingPosition {
   auto(
     'Auto · detect orientation',
