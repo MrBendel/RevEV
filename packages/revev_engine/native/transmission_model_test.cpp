@@ -23,12 +23,18 @@ int main() {
     const double carreraRatios[] = {3.50, 2.06, 1.41, 1.07, 0.86};
     tx.configure(5, carreraRatios, 3.44, 8000.0, 900.0, 0.31);
 
-    // At 0 km/h, stopped in Drive: gear is 1, target RPM is at idle (900 RPM)
+    // At 0 km/h, stopped in Drive: gear is 1, target RPM is at idle (900 RPM), simulated throttle is 0
     for (int i = 0; i < 50; ++i) {
         tx.update(0.01f, 0.0f, 0.0f, 0.5f, 0.0f, 1);
     }
     require(tx.gear() == 1, "Stopped car must be in 1st gear");
     require(std::abs(tx.targetRpm() - 900.0f) < 5.0f, "Idle RPM not 900 at standstill");
+    require(tx.simulatedThrottle() == 0.0f, "Standstill must have 0 simulated throttle in GPS Drive");
+
+    // Standstill with manual screen throttle: should pass manual throttle through without shifting
+    tx.update(0.01f, 0.0f, 0.0f, 0.5f, 0.65f, 1);
+    require(tx.gear() == 1, "Must remain in 1st gear at standstill with manual throttle");
+    require(std::abs(tx.simulatedThrottle() - 0.65f) < 0.01f, "Standstill manual throttle not respected");
 
     // 3. Hard acceleration pull (flooring it: 2.8 m/s^2, 1.0 aggressiveness):
     // Should wind up 1st gear all the way near redline before shifting
