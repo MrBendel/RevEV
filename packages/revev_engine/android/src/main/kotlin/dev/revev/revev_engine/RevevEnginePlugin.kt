@@ -356,21 +356,28 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         currentAccelMps2 = smoothedAccel
         currentLateralAccelMps2 = smoothedLateral
 
-        // Dead-reckon vehicle speed if GPS hasn't updated recently (> 1.2s or stationary launch)
+        // Dead-reckon vehicle speed if GPS hasn't updated recently (> 1.5s) or during stationary launch
         val nowMs = System.currentTimeMillis()
-        if (nowMs - lastGpsSpeedTimeMs > 1200L || currentSpeedMps < 0.5f) {
+        val gpsIsFresh = (nowMs - lastGpsSpeedTimeMs <= 1500L)
+        if (!gpsIsFresh) {
             if (currentAccelMps2 > 0.15f) {
-                // Accelerating: integrate speed
+                // Accelerating without fresh GPS: integrate speed
                 estimatedSpeedMps = kotlin.math.max(0.0f, estimatedSpeedMps + currentAccelMps2 * dt)
-                currentSpeedMps = kotlin.math.max(currentSpeedMps, estimatedSpeedMps)
+                currentSpeedMps = estimatedSpeedMps
             } else if (currentAccelMps2 < -0.3f) {
-                // Braking: decelerate
+                // Braking without fresh GPS: decelerate
                 estimatedSpeedMps = kotlin.math.max(0.0f, estimatedSpeedMps + currentAccelMps2 * dt)
                 currentSpeedMps = estimatedSpeedMps
             } else if (currentSpeedMps < 1.0f) {
+                // Slowly decay residual speed to 0
                 estimatedSpeedMps = kotlin.math.max(0.0f, estimatedSpeedMps - 0.5f * dt)
                 currentSpeedMps = estimatedSpeedMps
             }
+        } else if (currentSpeedMps < 0.5f && currentAccelMps2 > 0.25f) {
+            // Stationary launch assist: GPS typically has 1-second latency reporting the initial launch.
+            // Dead-reckon forward acceleration to immediately wake the transmission/engine off idle.
+            estimatedSpeedMps = kotlin.math.max(estimatedSpeedMps, currentSpeedMps) + currentAccelMps2 * dt
+            currentSpeedMps = kotlin.math.max(currentSpeedMps, estimatedSpeedMps)
         }
 
         nativeDriveTelemetry(

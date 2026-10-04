@@ -187,5 +187,54 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
     });
+
+    testWidgets('GPS Drive mode at standstill reports 1st gear and idle stats', (tester) async {
+      final calls = <MethodCall>[];
+      var playing = false;
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            calls.add(call);
+            if (call.method == 'start') playing = true;
+            if (call.method == 'stop' || call.method == 'shutdown') playing = false;
+            if (call.method == 'stats') {
+              return {
+                'playing': playing,
+                'rpm': 900.0,
+                'gear': 1,
+                'vehicleSpeed': 0.0,
+                'tireSquealLevel': 0.0,
+              };
+            }
+            return null;
+          });
+
+      addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null));
+
+      tester.view.physicalSize = const Size(430, 2200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(const RevEvApp());
+
+      // Switch to GPS Drive mode
+      await tester.tap(find.text('GPS DRIVE'));
+      await tester.pump();
+
+      // Start engine
+      await tester.tap(find.byKey(const Key('start')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(playing, isTrue);
+
+      final telemetryCall = calls.lastWhere((c) => c.method == 'driveTelemetry');
+      expect(telemetryCall.arguments['driveMode'], DriveMode.gpsDrive.index);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
   });
 }
