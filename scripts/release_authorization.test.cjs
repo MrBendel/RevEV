@@ -11,7 +11,8 @@ const authorize = new (Object.getPrototypeOf(async function () {}).constructor)(
   'github', 'context', 'core', 'process', script);
 
 async function run({ permission = 'write', ready = 'true', event = 'issue_comment',
-  ref = 'refs/heads/main', publish = 'true', pr = {}, notices = [], summaries = [] } = {}) {
+  ref = 'refs/heads/main', publish = 'true', pr = {}, notices = [], summaries = [],
+  reactions = [], commentId = 42 } = {}) {
   const outputs = {};
   await authorize({ rest: {
     repos: { getCollaboratorPermissionLevel: async () => ({ data: { permission } }) },
@@ -20,16 +21,33 @@ async function run({ permission = 'write', ready = 'true', event = 'issue_commen
       head: { repo: { full_name: 'MrBendel/RevEV' }, sha: 'pr-head' },
       base: { ref: 'main' }, merge_commit_sha: 'merge-commit', ...pr,
     } }) },
+    reactions: {
+      createForIssueComment: async (args) => { reactions.push(args); return { data: {} }; },
+    },
   } }, { repo: { owner: 'MrBendel', repo: 'RevEV' }, actor: 'maintainer',
-    sha: 'event-commit', eventName: event, ref, issue: { number: 2 } },
+    sha: 'event-commit', eventName: event, ref, issue: { number: 2 },
+    payload: { comment: commentId ? { id: commentId } : undefined } },
   {
     setOutput: (key, value) => { outputs[key] = value; },
     notice: (msg) => { notices.push(msg); },
+    info: () => {},
     summary: { addRaw: (text) => ({ write: async () => { summaries.push(text); } }) },
   },
   { env: { PLAY_READY: ready, PUBLISH: publish, RELEASE_STATUS: 'draft' } });
   return outputs;
 }
+
+test('authorized release comment adds rocket reaction', async () => {
+  const reactions = [];
+  await run({ reactions, commentId: 99 });
+  assert.equal(reactions.length, 1);
+  assert.deepEqual(reactions[0], {
+    owner: 'MrBendel',
+    repo: 'RevEV',
+    comment_id: 99,
+    content: 'rocket',
+  });
+});
 
 test('open PR uses exact head and completed internal release', async () => {
   assert.deepEqual(await run(), { ref: 'pr-head', publish: 'true', status: 'completed' });
