@@ -118,6 +118,24 @@ int main() {
     require(std::isfinite(tx.targetRpm()), "Non-finite RPM output");
     require(std::isfinite(tx.simulatedThrottle()), "Non-finite throttle output");
 
+    // Periodic mount/pedaling input at constant GPS speed used to cause 90
+    // gear changes in 30 seconds. Sustained acceleration still needs kickdown.
+    tx.configure(5, carreraRatios, 3.44, 6500.0, 900.0, 0.31);
+    int changes = 0, previousGear = 1;
+    for (int i = 0; i < 4000; ++i) {
+        const float ripple = 2.5f * std::sin(i * .01f * 6.283185f * 1.5f);
+        tx.update(.01f, 6.7056f, ripple, .6f, 0.0f, 1);
+        if (i > 1000 && tx.gear() != previousGear) ++changes;
+        previousGear = tx.gear();
+    }
+    require(changes == 0, "alternating acceleration must not cause repeated gear changes");
+    const int cruiseGear = tx.gear();
+    for (int i = 0; i < 200; ++i) tx.update(.01f, 6.7056f, 2.8f, .6f, 0.0f, 1);
+    require(tx.gear() < cruiseGear, "sustained acceleration must still kick down");
+    tx.update(.01f, 0.0f, 0.0f, .6f, 0.0f, 0);
+    tx.update(.01f, 6.7056f, 0.0f, .6f, 0.0f, 1);
+    require(tx.gear() >= 1 && std::isfinite(tx.targetRpm()), "manual-to-drive transition must be valid");
+
     std::printf("All TransmissionModel tests passed successfully!\n");
     return 0;
 }

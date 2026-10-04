@@ -10,13 +10,28 @@ import 'package:revev_engine/revev_engine.dart';
 
 void main() {
   test(
+    'motion ripple keeps GPS speed steady while acceleration alternates',
+    () {
+      final a = DriveScenario.ripple.at(13 + 1 / 6);
+      final b = DriveScenario.ripple.at(13 + 1 / 2);
+      expect(a.speed, b.speed);
+      expect(a.accel, closeTo(.8, .001));
+      expect(b.accel, closeTo(-.8, .001));
+    },
+  );
+  test(
     'profiles launch, cruise, brake and finish without a speed discontinuity',
     () {
       for (final scenario in DriveScenario.values) {
         expect(scenario.at(0).speed, 0);
         expect(scenario.at(8).accel, greaterThan(0));
         expect(scenario.at(15).speed, closeTo(scenario.topSpeed, 0.001));
-        expect(scenario.at(20).accel, lessThan(0));
+        expect(
+          scenario
+              .at(3 + scenario.rampSeconds + scenario.cruiseSeconds + 2)
+              .accel,
+          lessThan(0),
+        );
         expect(scenario.at(scenario.duration).speed, 0);
         for (var t = 0.1; t < scenario.duration; t += 0.1) {
           final previous = scenario.at(t - 0.1);

@@ -14,6 +14,8 @@ Choose **SPEED SIM**, scroll to **Driving test lab**, and select a scenario:
 | City launch | 3 s idle, 0–30 mph over 10 s, 5 s cruise, 6 s braking, 3 s stopped |
 | Brisk launch | Same phases, with 0–60 mph over 10 s |
 | GPS gap | City launch with GPS withheld from seconds 7–13 |
+| Steady cruise | 0–15 mph launch, 20 s at steady speed, then braking and stop |
+| Motion ripple | Steady-cruise profile with a ±0.8 m/s², 1.5 Hz acceleration disturbance during cruise; GPS speed stays steady |
 
 Each scenario starts a fresh native engine session and waits for at least 700 RPM
 before starting the driving profile (a 45-second timeout preserves a failed-start
@@ -33,6 +35,17 @@ summary is an observation, not a pass/fail certification of sound quality.
 Synthetic acceleration is already in vehicle coordinates. These tests cover
 speed estimation and the drivetrain, but do **not** exercise Android's GPS radio,
 gravity removal, or mounting-axis transforms. Use live recording for those.
+
+For rhythmic RPM changes, compare **Steady cruise** with **Motion ripple**.
+The second test deliberately separates steady GPS speed from alternating motion
+input, as a stress test rather than a recording of a particular bike or mount.
+The report lets you distinguish a changing requested RPM, repeated gear changes,
+and an engine that overshoots a steady requested RPM.
+
+The transmission smooths acceleration demand and requires sustained kickdown
+input, with at least 0.8 seconds between shifts. The throttle governor damps RPM
+changes and learns the cruise throttle needed by the selected engine. These
+controls preserve real sustained acceleration while rejecting brief motion pulses.
 
 ## Capture a real drive
 
@@ -87,6 +100,7 @@ cd android
 .\gradlew.bat :revev_engine:testDebugUnitTest
 cd ..
 flutter drive --driver=test_driver/integration_test.dart --target=integration_test/drive_harness_test.dart -d <android-id>
+flutter drive --driver=test_driver/integration_test.dart --target=integration_test/steady_drive_test.dart -d <android-id> --profile
 ```
 
 Android unit tests exercise the actual estimator, including missing sensors,
