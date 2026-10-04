@@ -14,6 +14,7 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Bundle
+import android.os.SystemClock
 import java.io.File
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
@@ -59,8 +60,34 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     private var smoothedLateral = 0.0f
 
     // Dead-reckoning velocity integration for instant responsiveness before/between GPS fixes
-    private var estimatedSpeedMps = 0.0f
-    private var lastGpsSpeedTimeMs = 0L
+    private val motion = DriveMotionEstimator()
+    private val replayMotion = DriveMotionEstimator()
+    private var replayActive = false
+    private var replayTime = 0.0
+    private var effectiveMount = "unknown"
+    private var locationError: String? = null
+    private var gpsAccuracyM: Float? = null
+    private val linearAcceleration = FloatArray(3)
+    private fun nowSeconds() = SystemClock.elapsedRealtimeNanos() * 1e-9
+    private fun resetMotion() {
+        motion.reset()
+        lastLocation = null
+        gpsAccuracyM = null
+        locationError = null
+        effectiveMount = "unknown"
+        linearAcceleration.fill(0.0f)
+        currentSpeedMps = 0.0f
+        currentAccelMps2 = 0.0f
+        currentLateralAccelMps2 = 0.0f
+    }
+
+    private fun publishMotion() {
+        currentSpeedMps = motion.speedMps.toFloat()
+        currentAccelMps2 = motion.acceleration(nowSeconds()).toFloat()
+        nativeDriveTelemetry(currentSpeedMps, currentAccelMps2, currentAggressiveness,
+            currentDriveMode, currentLateralAccelMps2, currentTireSquealSensitivity)
+        EngineBridge.updateState { it.copy(vehicleSpeedMps = currentSpeedMps.toDouble(), accelMps2 = currentAccelMps2.toDouble()) }
+    }
     private var lastLocation: Location? = null
 
     private external fun nativeStart(root: String, preset: String): Int
@@ -127,12 +154,10 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray): Boolean {
         if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
-            val granted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            val granted = hasLocationPermission()
             if (granted) {
                 if (playing && currentDriveMode == 1) {
-                    startSensors()
-                } else if (hasLocationPermission()) {
-                    startLocationUpdates()
+                    if (sensorsActive) startLocationUpdates() else startSensors()
                 }
             }
             channel.invokeMethod("onLocationPermissionResult", mapOf("granted" to granted))
@@ -172,7 +197,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         if (sensorsActive) return
         sensorsActive = true
         resetSensorFilters()
-        estimatedSpeedMps = currentSpeedMps
+        resetMotion()
 
         accelSensor?.let {
             sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
@@ -215,14 +240,14 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                 if (provider == LocationManager.PASSIVE_PROVIDER) {
                     try {
                         mgr.requestLocationUpdates(provider, 100L, 0.0f, this, android.os.Looper.getMainLooper())
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) { locationError = e.message ?: "Location subscription failed" }
                     continue
                 }
                 if (mgr.isProviderEnabled(provider)) {
                     val minTime = if (provider == LocationManager.GPS_PROVIDER) 100L else 250L
                     try {
                         mgr.requestLocationUpdates(provider, minTime, 0.0f, this, android.os.Looper.getMainLooper())
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) { locationError = e.message ?: "Location subscription failed" }
                 }
             }
 
@@ -230,8 +255,8 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                 try {
                     val loc = mgr.getLastKnownLocation(provider)
                     if (loc != null) {
-                        val ageMs = System.currentTimeMillis() - loc.time
-                        if (ageMs < 10000L) {
+                        val ageMs = (SystemClock.elapsedRealtimeNanos() - loc.elapsedRealtimeNanos) / 1000000L
+                        if (ageMs in 0L..2500L) {
                             onLocationChanged(loc)
                             break
                         }
@@ -301,6 +326,9 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
             linearY = rawY
             linearZ = rawZ
         }
+        linearAcceleration[0] = linearX
+        linearAcceleration[1] = linearY
+        linearAcceleration[2] = linearZ
 
         // Project out vertical gravity component (road bumps, potholes) to isolate horizontal vehicle motion
         val gravNormSq = gravity[0] * gravity[0] + gravity[1] * gravity[1] + gravity[2] * gravity[2]
@@ -327,6 +355,8 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         } else {
             mountingPositionName
         }
+
+        effectiveMount = effectiveMounting
 
         // Transform device axes to vehicle forward & lateral acceleration based on mounting position
         val rawForward = when (effectiveMounting) {
@@ -356,71 +386,28 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         currentAccelMps2 = smoothedAccel
         currentLateralAccelMps2 = smoothedLateral
 
-        // Dead-reckon vehicle speed if GPS hasn't updated recently (> 1.5s) or during stationary launch
-        val nowMs = System.currentTimeMillis()
-        val gpsIsFresh = (nowMs - lastGpsSpeedTimeMs <= 1500L)
-        if (!gpsIsFresh) {
-            if (currentAccelMps2 > 0.15f) {
-                // Accelerating without fresh GPS: integrate speed
-                estimatedSpeedMps = kotlin.math.max(0.0f, estimatedSpeedMps + currentAccelMps2 * dt)
-                currentSpeedMps = estimatedSpeedMps
-            } else if (currentAccelMps2 < -0.3f) {
-                // Braking without fresh GPS: decelerate
-                estimatedSpeedMps = kotlin.math.max(0.0f, estimatedSpeedMps + currentAccelMps2 * dt)
-                currentSpeedMps = estimatedSpeedMps
-            } else if (currentSpeedMps < 1.0f) {
-                // Slowly decay residual speed to 0
-                estimatedSpeedMps = kotlin.math.max(0.0f, estimatedSpeedMps - 0.5f * dt)
-                currentSpeedMps = estimatedSpeedMps
-            }
-        } else if (currentSpeedMps < 0.5f && currentAccelMps2 > 0.25f) {
-            // Stationary launch assist: GPS typically has 1-second latency reporting the initial launch.
-            // Dead-reckon forward acceleration to immediately wake the transmission/engine off idle.
-            estimatedSpeedMps = kotlin.math.max(estimatedSpeedMps, currentSpeedMps) + currentAccelMps2 * dt
-            currentSpeedMps = kotlin.math.max(currentSpeedMps, estimatedSpeedMps)
-        }
-
-        nativeDriveTelemetry(
-            currentSpeedMps,
-            currentAccelMps2,
-            currentAggressiveness,
-            currentDriveMode,
-            currentLateralAccelMps2,
-            currentTireSquealSensitivity
-        )
-        EngineBridge.updateState { it.copy(vehicleSpeedMps = currentSpeedMps.toDouble(), accelMps2 = currentAccelMps2.toDouble()) }
+        // Integrate on every IMU sample, including between fresh GPS fixes.
+        motion.step(event.timestamp * 1e-9, currentAccelMps2.toDouble())
+        publishMotion()
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
     override fun onLocationChanged(location: Location) {
-        if (currentDriveMode != 1) return
-        val prev = lastLocation
-        lastLocation = location
-        lastGpsSpeedTimeMs = System.currentTimeMillis()
-
-        if (location.hasSpeed() && location.speed >= 0.0f) {
-            currentSpeedMps = if (location.speed < 0.3f) 0.0f else location.speed
-        } else if (prev != null) {
-            val dt = (location.time - prev.time) / 1000.0f
-            if (dt > 0.05f) {
-                val derivedSpeed = location.distanceTo(prev) / dt
-                if (derivedSpeed >= 0.0f && derivedSpeed < 100.0f) {
-                    currentSpeedMps = if (derivedSpeed < 0.3f) 0.0f else derivedSpeed
-                }
-            }
+        if (currentDriveMode != 1 || !playing || !sensorsActive) return
+        val now = nowSeconds()
+        val fixTime = location.elapsedRealtimeNanos * 1e-9
+        // Position-only network fixes are not reliable speed observations. Do not
+        // derive a large speed from a GPS/network position jump.
+        val speed = if (location.hasSpeed()) location.speed.toDouble() else Double.NaN
+        val accuracy = if (location.hasAccuracy()) location.accuracy.toDouble() else Double.NaN
+        motion.step(now)
+        if (motion.gps(now, fixTime, speed, accuracy)) {
+            lastLocation = location
+            gpsAccuracyM = location.accuracy
+            locationError = null
         }
-        estimatedSpeedMps = currentSpeedMps
-
-        nativeDriveTelemetry(
-            currentSpeedMps,
-            currentAccelMps2,
-            currentAggressiveness,
-            currentDriveMode,
-            currentLateralAccelMps2,
-            currentTireSquealSensitivity
-        )
-        EngineBridge.updateState { it.copy(vehicleSpeedMps = currentSpeedMps.toDouble(), accelMps2 = currentAccelMps2.toDouble()) }
+        publishMotion()
     }
 
     @Deprecated("Deprecated in Java")
@@ -430,6 +417,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         stopSensors()
         nativeStop()
         playing = false
+        replayActive = false
         EngineBridge.updateState { it.copy(playing = false, stopping = false, rpm = 0.0, gear = 0, vehicleSpeedMps = 0.0, accelMps2 = 0.0, boostBar = 0.0) }
         focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         focusRequest = null
@@ -485,6 +473,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                 val newDriveMode = (call.argument<Number>("driveMode") ?: currentDriveMode).toInt()
                 val prevDriveMode = currentDriveMode
                 currentDriveMode = newDriveMode
+                if (newDriveMode != 2) replayActive = false
 
                 currentAggressiveness = (call.argument<Number>("aggressiveness") ?: currentAggressiveness).toFloat()
                 call.argument<Number>("tireSquealSensitivity")?.let { currentTireSquealSensitivity = it.toFloat() }
@@ -516,11 +505,26 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                     stopSensors()
                 }
 
+                val sample = call.argument<Map<String, Any?>>("testSample")
+                if (sample != null && currentDriveMode == 2 && playing) {
+                    val time = (sample["timeSeconds"] as? Number)?.toDouble() ?: 0.0
+                    if (sample["reset"] == true) replayMotion.reset()
+                    replayActive = true
+                    replayTime = time
+                    replayMotion.step(time, (sample["accelMps2"] as? Number)?.toDouble())
+                    (sample["gpsSpeedMps"] as? Number)?.let {
+                        replayMotion.gps(time, time, it.toDouble(), 5.0)
+                    }
+                    currentSpeedMps = replayMotion.speedMps.toFloat()
+                    currentAccelMps2 = replayMotion.acceleration(time).toFloat()
+                } else if (currentDriveMode == 2) {
+                    replayActive = false
+                }
                 nativeDriveTelemetry(
                     currentSpeedMps,
                     currentAccelMps2,
                     currentAggressiveness,
-                    currentDriveMode,
+                    if (replayActive) 1 else currentDriveMode,
                     currentLateralAccelMps2,
                     currentTireSquealSensitivity
                 )
@@ -528,6 +532,10 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                 result.success(null)
             }
             "stats" -> {
+                if (playing && currentDriveMode == 1) {
+                    motion.step(nowSeconds())
+                    publishMotion()
+                }
                 val s = nativeStats()
                 if (s[3] != 0.0 || s[4] != 0.0) stop()
                 val rpm = s[0]
@@ -560,7 +568,27 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                     "gear" to gear,
                     "vehicleSpeed" to vehicleSpeed,
                     "accelMps2" to accelMps2,
-                    "tireSquealLevel" to tireSquealLevel
+                    "tireSquealLevel" to tireSquealLevel,
+                    "motion" to ((if (replayActive) replayMotion.diagnostics(replayTime)
+                        else motion.diagnostics(nowSeconds())) + mapOf(
+                        "supported" to true,
+                        "targetRpm" to if (s.size > 11) s[11] else null,
+                        "engineThrottle" to if (s.size > 12) s[12] else null,
+                        "replay" to replayActive,
+                        "sensorsActive" to sensorsActive,
+                        "accelerometerAvailable" to (accelSensor != null),
+                        "sensorType" to accelSensor?.stringType,
+                        "gravityReady" to gravityInitialized,
+                        "linearX" to linearAcceleration[0],
+                        "linearY" to linearAcceleration[1],
+                        "linearZ" to linearAcceleration[2],
+                        "locationPermission" to hasLocationPermission(),
+                        "gpsEnabled" to (locationManager?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true),
+                        "gpsAccuracyM" to gpsAccuracyM,
+                        "provider" to lastLocation?.provider,
+                        "mount" to effectiveMount,
+                        "locationError" to locationError
+                    ))
                 ))
             }
             "hasLocationPermission" -> {

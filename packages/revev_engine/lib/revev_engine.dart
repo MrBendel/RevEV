@@ -33,10 +33,12 @@ class EngineStats {
     this.vehicleSpeed = 0.0,
     this.tireSquealLevel = 0.0,
     this.accelMps2 = 0.0,
+    this.motion = const {},
   });
   final double rpm, workMs, boost, vehicleSpeed, tireSquealLevel, accelMps2;
   final int underruns, gear;
   final bool playing, failed, stopping;
+  final Map<String, dynamic> motion;
 
   double get speedKmh => vehicleSpeed * 3.6;
   double get speedMph => vehicleSpeed * 2.23694;
@@ -65,15 +67,17 @@ class RevevEngine {
     String mountingPosition = 'auto',
     double lateralAccelMps2 = 0.0,
     double tireSquealSensitivity = 0.5,
+    Map<String, Object?>? testSample,
   }) => _channel.invokeMethod<void>('driveTelemetry', {
-        'speedMps': speedMps,
-        'accelMps2': accelMps2,
-        'aggressiveness': aggressiveness,
-        'driveMode': driveMode.index,
-        'mountingPosition': mountingPosition,
-        'lateralAccelMps2': lateralAccelMps2,
-        'tireSquealSensitivity': tireSquealSensitivity,
-      });
+    'speedMps': speedMps,
+    'accelMps2': accelMps2,
+    'aggressiveness': aggressiveness,
+    'driveMode': driveMode.index,
+    'mountingPosition': mountingPosition,
+    'lateralAccelMps2': lateralAccelMps2,
+    'tireSquealSensitivity': tireSquealSensitivity,
+    'testSample': ?testSample,
+  });
 
   Future<bool> hasLocationPermission() async {
     final granted = await _channel.invokeMethod<bool>('hasLocationPermission');
@@ -81,7 +85,9 @@ class RevevEngine {
   }
 
   Future<bool> requestLocationPermission() async {
-    final granted = await _channel.invokeMethod<bool>('requestLocationPermission');
+    final granted = await _channel.invokeMethod<bool>(
+      'requestLocationPermission',
+    );
     return granted ?? false;
   }
 
@@ -99,6 +105,7 @@ class RevevEngine {
       vehicleSpeed: (data['vehicleSpeed'] as num? ?? 0).toDouble(),
       tireSquealLevel: (data['tireSquealLevel'] as num? ?? 0).toDouble(),
       accelMps2: (data['accelMps2'] as num? ?? 0).toDouble(),
+      motion: Map<String, dynamic>.from(data['motion'] as Map? ?? const {}),
     );
   }
 
@@ -113,7 +120,8 @@ class RevevEngine {
     _channel.setMethodCallHandler((call) async {
       switch (call.method) {
         case 'onRemoteStart':
-          final preset = call.arguments?['preset'] as String? ?? 'porsche/911_carrera_32';
+          final preset =
+              call.arguments?['preset'] as String? ?? 'porsche/911_carrera_32';
           onRemoteStart?.call(preset);
           break;
         case 'onRemoteStop':
@@ -125,7 +133,9 @@ class RevevEngine {
           break;
         case 'onRemoteSetDriveMode':
           final modeIndex = call.arguments?['driveMode'] as int?;
-          if (modeIndex != null && modeIndex >= 0 && modeIndex < DriveMode.values.length) {
+          if (modeIndex != null &&
+              modeIndex >= 0 &&
+              modeIndex < DriveMode.values.length) {
             onRemoteSetDriveMode?.call(DriveMode.values[modeIndex]);
           }
           break;

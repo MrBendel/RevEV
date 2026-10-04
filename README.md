@@ -180,6 +180,9 @@ flutter run -d <iphone-device-id>
 
 ## Checks
 
+For repeatable acceleration/braking scenarios and live GPS/accelerometer traces,
+see the [Driving test lab guide](docs/DRIVING_VALIDATION.md).
+
 ```powershell
 flutter analyze
 flutter test

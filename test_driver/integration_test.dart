@@ -5,6 +5,7 @@ import 'package:integration_test/integration_test_driver_extended.dart';
 
 Future<void> main() async {
   await integrationDriver(
+    writeResponseOnFailure: true,
     responseDataCallback: (data) async {
       if (data == null) return;
       final dir = Directory('build/screenshots');
@@ -13,6 +14,7 @@ Future<void> main() async {
         'dashboard-off',
         'dashboard-running',
         'listening-controls',
+        'drive-test-lab',
       ]) {
         final encoded = data.remove(name) as String?;
         if (encoded != null) {

@@ -45,6 +45,9 @@ jobs:
           c++ -std=c++17 -O2 packages/revev_engine/native/tire_squeal_test.cpp -o /tmp/revev-tire-squeal-test
           /tmp/revev-tire-squeal-test
       - run: flutter build apk --debug
+      - name: Test Android motion estimator
+        working-directory: android
+        run: bash ./gradlew :revev_engine:testDebugUnitTest
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: android-debug-${{ github.run_number }}

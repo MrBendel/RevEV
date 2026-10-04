@@ -46,6 +46,8 @@ public:
     }
     void render(float *out, int frames);
     float rpm() const { return rpm_.load(); }
+    float targetRpm() const { return targetRpm_.load(); }
+    float engineThrottle() const { return engineThrottle_.load(); }
     float boost() const { return boost_.load(); }
     float workMs() const { return workMs_.load(); }
     uint32_t underruns() const { return underruns_.load(); }
@@ -62,6 +64,7 @@ private:
     std::array<float, capacity> buffer_{};
     std::atomic<uint32_t> read_{0}, write_{0}, underruns_{0};
     std::atomic<float> throttle_{0}, volume_{0.15f}, rpm_{0}, workMs_{0}, boost_{0};
+    std::atomic<float> targetRpm_{0}, engineThrottle_{0};
     std::atomic<float> speedMps_{0.0f}, accelMps2_{0.0f}, aggressiveness_{0.5f};
     std::atomic<float> lateralAccelMps2_{0.0f}, tireSquealSensitivity_{0.5f}, tireSquealLevel_{0.0f};
     std::atomic<int> driveMode_{0}, gear_{0};

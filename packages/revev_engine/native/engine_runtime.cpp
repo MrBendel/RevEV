@@ -37,6 +37,8 @@ void EngineRuntime::stop() {
     running_ = false;
     if (worker_.joinable()) worker_.join();
     rpm_ = 0;
+    targetRpm_ = 0;
+    engineThrottle_ = 0;
     boost_ = 0;
     gear_ = 0;
     speedMps_ = 0.0f;
@@ -115,14 +117,17 @@ void EngineRuntime::run() {
         TireSquealModel tireSquealModel;
         tireSquealModel.load(assetRoot_.empty() ? "" : assetRoot_ + "/es/sound-library/new/tire_squeal.wav");
         TransmissionModel transmissionModel;
+        // engine-sim stores angular velocity in rad/s; the drivetrain and turbo
+        // models take RPM. Passing rad/s capped a 6,500 RPM engine near 667 RPM.
+        const float redlineRpm = static_cast<float>(units::toRpm(preset.engine->getRedline()));
         try {
             const auto &p = getPreset(presetId_);
             transmissionModel.configure(p.gearCount, p.gearRatios, p.finalDrive,
-                static_cast<float>(preset.engine->getRedline()), 900.0, 0.31);
+                redlineRpm, 900.0, 0.31);
         } catch (...) {
             const double defRatios[] = {3.5, 2.06, 1.41, 1.07, 0.86};
             transmissionModel.configure(5, defRatios, 3.44,
-                static_cast<float>(preset.engine->getRedline()), 900.0, 0.31);
+                redlineRpm, 900.0, 0.31);
         }
         while (running_) {
             auto w = write_.load(std::memory_order_relaxed);
@@ -143,6 +148,7 @@ void EngineRuntime::run() {
 
             transmissionModel.update(0.01f, speed, accel, aggr, manualThr, driveMode);
             gear_ = transmissionModel.gear();
+            targetRpm_ = driveMode == 0 ? 0.0f : transmissionModel.targetRpm();
 
             float targetThrottle = 0.0f;
             if (shuttingDown) {
@@ -182,6 +188,7 @@ void EngineRuntime::run() {
             }
 
             filteredThrottle += (targetThrottle - filteredThrottle) * (driveMode > 0 ? 0.15f : 0.08f);
+            engineThrottle_ = filteredThrottle;
             preset.engine->setSpeedControl(filteredThrottle);
             preset.engine->getIgnitionModule()->m_enabled = !shuttingDown;
             sim.m_starterMotor.m_enabled = !shuttingDown && (elapsed < 1.5 || (!started && elapsed < crankTimeout));
@@ -196,7 +203,7 @@ void EngineRuntime::run() {
             const float rpm = static_cast<float>(preset.engine->getRpm());
             if (!std::isfinite(rpm) || std::abs(rpm) > 40000) { failed_ = true; break; }
             rpm_ = std::max(0.0f, rpm);
-            turboModel.updatePhysics(0.01f, rpm, filteredThrottle, static_cast<float>(preset.engine->getRedline()));
+            turboModel.updatePhysics(0.01f, rpm, filteredThrottle, redlineRpm);
             boost_ = turboModel.boostBar();
             const float latG = std::abs(lateralAccelMps2_.load()) / 9.80665f;
             const float squealSensitivity = tireSquealSensitivity_.load();
