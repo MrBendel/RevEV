@@ -48,7 +48,15 @@ class DriveMotionEstimator {
         val anchor = gpsTime ?: firstStep!!
         if (now - anchor <= 5.0) {
             val accel = acceleration(now)
-            if (abs(accel) >= 0.08) speedMps = (speedMps + accel * dt).coerceIn(0.0, 100.0)
+            // Preserve the stoplight/launch guard: small mount bias must not
+            // invent movement while GPS reports standstill. A real launch or
+            // the next moving GPS fix releases it.
+            val atRest = speedMps < 0.5 && (gpsSpeedMps == null || gpsSpeedMps!! < 0.5)
+            if (atRest && accel <= 0.25) {
+                speedMps = 0.0
+            } else if (abs(accel) >= 0.08) {
+                speedMps = (speedMps + accel * dt).coerceIn(0.0, 100.0)
+            }
         }
     }
 

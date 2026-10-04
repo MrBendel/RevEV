@@ -6,6 +6,15 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DriveMotionEstimatorTest {
+    @Test fun stationaryBiasCannotInventSpeedButLaunchIsImmediate() {
+        val estimator = DriveMotionEstimator()
+        estimator.step(0.0, 0.2)
+        estimator.gps(0.0, 0.0, 0.0, 5.0)
+        for (i in 1..40) estimator.step(i * 0.02, 0.2)
+        assertEquals(0.0, estimator.speedMps)
+        for (i in 41..50) estimator.step(i * 0.02, 1.5)
+        assertEquals(0.3, estimator.speedMps, 0.001)
+    }
     @Test fun accelerationFillsBetweenFreshGpsFixesAndBrakingReducesSpeed() {
         val estimator = DriveMotionEstimator()
         estimator.step(0.0, 2.0)
