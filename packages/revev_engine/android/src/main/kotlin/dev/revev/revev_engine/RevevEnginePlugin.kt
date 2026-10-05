@@ -1,6 +1,7 @@
 package dev.revev.revev_engine
 
 import android.app.Activity
+import android.content.Intent
 import android.content.Context
 import android.content.pm.PackageManager
 import android.hardware.Sensor
@@ -23,9 +24,39 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.PluginRegistry
 
-class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler, SensorEventListener, LocationListener, EngineBridge.CommandHandler, PluginRegistry.RequestPermissionsResultListener {
+class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler, SensorEventListener, LocationListener, EngineBridge.CommandHandler, PluginRegistry.RequestPermissionsResultListener, PluginRegistry.ActivityResultListener {
     companion object {
         private const val LOCATION_PERMISSION_REQUEST_CODE = 1001
+    }
+
+    private var exportResult: MethodChannel.Result? = null
+    private var exportFile: File? = null
+    private fun logDirectory() = File(context.filesDir, "session-logs").also { it.mkdirs() }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
+        if (requestCode != 1002) return false
+        val result = exportResult ?: return true
+        val source = exportFile
+        exportResult = null
+        exportFile = null
+        val uri = data?.data
+        if (resultCode != Activity.RESULT_OK || uri == null || source == null) {
+            result.success(null)
+            return true
+        }
+        Thread {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    source.inputStream().use { it.copyTo(output) }
+                } ?: error("Could not open destination")
+                android.os.Handler(android.os.Looper.getMainLooper()).post { result.success(null) }
+            } catch (e: Exception) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    result.error("export_failed", e.message, null)
+                }
+            }
+        }.start()
+        return true
     }
 
     private lateinit var channel: MethodChannel
@@ -123,6 +154,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         activity = binding.activity
         activityBinding = binding
         binding.addRequestPermissionsResultListener(this)
+        binding.addActivityResultListener(this)
         if (playing && currentDriveMode == 1 && sensorsActive) {
             requestLocationUpdatesIfPermitted()
         }
@@ -130,6 +162,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
 
     override fun onDetachedFromActivityForConfigChanges() {
         activityBinding?.removeRequestPermissionsResultListener(this)
+        activityBinding?.removeActivityResultListener(this)
         activityBinding = null
         activity = null
     }
@@ -138,16 +171,21 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         activity = binding.activity
         activityBinding = binding
         binding.addRequestPermissionsResultListener(this)
+        binding.addActivityResultListener(this)
         if (playing && currentDriveMode == 1 && sensorsActive) {
             requestLocationUpdatesIfPermitted()
         }
     }
 
     override fun onDetachedFromActivity() {
+        exportResult?.error("export_interrupted", "Activity detached", null)
+        exportResult = null
+        exportFile = null
         if (playing) {
             stop()
         }
         activityBinding?.removeRequestPermissionsResultListener(this)
+        activityBinding?.removeActivityResultListener(this)
         activityBinding = null
         activity = null
     }
@@ -425,6 +463,32 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
+            "sessionLogDirectory" -> result.success(logDirectory().absolutePath)
+            "exportSessionLog" -> {
+                val name = call.argument<String>("name") ?: ""
+                val directory = logDirectory().canonicalFile
+                val source = File(directory, name).canonicalFile
+                val act = activity
+                if (source.parentFile != directory || !name.endsWith(".jsonl") || !source.isFile) {
+                    result.error("invalid_log", "Session log not found", null)
+                } else if (act == null || exportResult != null) {
+                    result.error("export_busy", "File picker unavailable", null)
+                } else {
+                    exportFile = source
+                    exportResult = result
+                    try {
+                        act.startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = "application/octet-stream"
+                            putExtra(Intent.EXTRA_TITLE, name)
+                        }, 1002)
+                    } catch (e: Exception) {
+                        exportFile = null
+                        exportResult = null
+                        result.error("export_failed", e.message, null)
+                    }
+                }
+            }
             "start" -> {
                 stop()
                 val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)

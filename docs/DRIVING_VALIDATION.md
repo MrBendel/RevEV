@@ -4,6 +4,31 @@ The lab below the controls in **SPEED SIM** and **GPS DRIVE** separates two ques
 does the engine respond to known driving inputs, and is the phone receiving useful
 inputs in its actual mounting position?
 
+## Automatic session files
+
+Every engine start creates a separate JSON Lines (`.jsonl`) file in Android's
+private `files/session-logs` directory. Recording runs in all drive modes without
+pressing the lab's record button. Stop closes the file after engine coast-down;
+backgrounding, audio loss, and engine failures also close the session.
+
+With the engine stopped, open **Session logs** below the debug dashboard, select
+a recording, and choose a destination in Android's file picker. Exported files
+can be attached for analysis. Originals remain across app restarts and updates;
+clearing app data or uninstalling removes them. Nothing uploads automatically.
+
+The first line contains UTC start time, preset and settings. Sample lines contain
+monotonic elapsed seconds, actual RPM, gear, speed/acceleration fed to the engine,
+manual throttle, and the full motion diagnostics (GPS speed/age/accuracy, linear
+acceleration axes, forward acceleration, fused speed, mounting choice, requested
+RPM and applied engine throttle). The last line records stop reason and count.
+Settings are repeated per sample so mode and control changes can be correlated.
+
+These are diagnostic snapshots at approximately 150 ms intervals, not a full-rate
+raw sensor trace; actual timing is in each sample. Files flush about once a second
+and on stop, without the lab recording's three-minute limit. After an abrupt
+process kill, complete JSON lines remain usable even if the final line or stop
+record is absent. Disk errors appear beside **Session logs** and do not stop audio.
+
 ## Repeatable stationary scenarios
 
 Select an engine, output level, and shift aggressiveness with the engine stopped.
