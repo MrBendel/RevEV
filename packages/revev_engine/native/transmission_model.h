@@ -21,6 +21,9 @@ public:
         shiftDirection_ = 0;
         clutchEngaged_ = 0.0f;
         prevSpeed_ = 0.0f;
+        shiftAccel_ = 0.0f;
+        kickdownDemandTime_ = 0.0f;
+        shiftCooldown_ = 0.0f;
     }
 
     void configure(int gearCount, const double *ratios, double finalDrive, double redline, double idle = 900.0, double tireRadius = 0.31) {
@@ -53,14 +56,21 @@ public:
             isShifting_ = false;
             shiftTimer_ = 0.0f;
             simulatedThrottle_ = manualThrottle;
+            shiftAccel_ = kickdownDemandTime_ = shiftCooldown_ = 0.0f;
             return;
         }
+
+        // A manual-to-drive transition must never index ratios_[-1].
+        if (gear_ < 1) gear_ = 1;
+        dt = std::isfinite(dt) ? std::clamp(dt, 0.0001f, 0.1f) : 0.01f;
+        shiftAccel_ += (accelMps2 - shiftAccel_) * dt / (0.35f + dt);
+        shiftCooldown_ = std::max(0.0f, shiftCooldown_ - dt);
 
         const float speedKmh = speedMps * 3.6f;
 
         // Accelerometer-based driver demand:
         // normAccel: 0 at cruise, 1.0 at >= 2.8 m/s^2 (~0.3g)
-        const float normAccel = std::clamp(accelMps2 / 2.8f, 0.0f, 1.0f);
+        const float normAccel = std::clamp(shiftAccel_ / 2.8f, 0.0f, 1.0f);
 
         // Effective shifting aggressiveness:
         // Combines user preference (aggressiveness) with actual acceleration demand
@@ -68,6 +78,10 @@ public:
             aggressiveness * 0.35f + normAccel * (0.65f + 0.35f * aggressiveness),
             0.0f, 1.0f
         );
+        // Reject alternating mount/pedaling pulses. Real acceleration must
+        // persist before demanding a lower gear, and shifts need time to settle.
+        kickdownDemandTime_ = normAccel > 0.65f && effectiveAggression > 0.60f
+            ? std::min(kickdownDemandTime_ + dt, 1.0f) : 0.0f;
 
         // Calculate shift threshold RPM based on redline and aggressiveness
         const float minShiftRpm = std::max(idleRpm_ * 2.2f, redlineRpm_ * 0.36f);
@@ -88,7 +102,7 @@ public:
         }
 
         // Automatic gear shift logic (when not mid-shift)
-        if (!isShifting_ && speedKmh > 1.0f) {
+        if (!isShifting_ && shiftCooldown_ <= 0.0f && speedKmh > 1.0f) {
             const float currentRatio = ratios_[gear_ - 1];
             const float currentGearRpm = calcDrivetrainRpm(speedKmh, currentRatio);
 
@@ -112,6 +126,7 @@ public:
                 isShifting_ = true;
                 shiftDirection_ = 1;
                 shiftTimer_ = 0.18f; // 180 ms torque cut
+                shiftCooldown_ = 0.8f;
             }
             // 2. Downshift check (Deceleration or Kickdown)
             else if (gear_ > 1) {
@@ -119,7 +134,7 @@ public:
                 const float prevGearRpm = calcDrivetrainRpm(speedKmh, prevRatio);
 
                 // Kickdown if aggressive acceleration and lower gear won't over-rev
-                const bool kickdownCondition = (normAccel > 0.65f && effectiveAggression > 0.60f &&
+                const bool kickdownCondition = (kickdownDemandTime_ >= 0.35f &&
                                                 prevGearRpm < redlineRpm_ * 0.82f);
                 // Deceleration downshift to prevent lugging/stalling
                 const bool decelCondition = (currentGearRpm < shiftDownRpm && prevGearRpm < redlineRpm_ * 0.85f);
@@ -129,6 +144,7 @@ public:
                     isShifting_ = true;
                     shiftDirection_ = -1;
                     shiftTimer_ = 0.16f; // 160 ms rev-match blip
+                    shiftCooldown_ = 0.8f;
                 }
             }
         }
@@ -234,4 +250,7 @@ private:
     int shiftDirection_ = 0;
     float clutchEngaged_ = 0.0f;
     float prevSpeed_ = 0.0f;
+    float shiftAccel_ = 0.0f;
+    float kickdownDemandTime_ = 0.0f;
+    float shiftCooldown_ = 0.0f;
 };

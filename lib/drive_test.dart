@@ -6,17 +6,24 @@ import 'package:revev_engine/revev_engine.dart';
 enum DriveScenario {
   urban('City launch · 0–30 mph', 13.4112, 10),
   brisk('Brisk launch · 0–60 mph', 26.8224, 10),
-  dropout('GPS gap · launch and braking', 13.4112, 10);
+  dropout('GPS gap · launch and braking', 13.4112, 10),
+  steady('Steady cruise · 15 mph', 6.7056, 10, cruiseSeconds: 20),
+  ripple('Motion ripple · 15 mph', 6.7056, 10, cruiseSeconds: 20);
 
-  const DriveScenario(this.label, this.topSpeed, this.rampSeconds);
+  const DriveScenario(
+    this.label,
+    this.topSpeed,
+    this.rampSeconds, {
+    this.cruiseSeconds = 5,
+  });
   final String label;
-  final double topSpeed, rampSeconds;
-  double get duration => 3 + rampSeconds + 5 + 6 + 3;
+  final double topSpeed, rampSeconds, cruiseSeconds;
+  double get duration => 3 + rampSeconds + cruiseSeconds + 6 + 3;
 
   DriveInput at(double seconds) {
     final t = seconds.clamp(0.0, duration);
     final rampEnd = 3 + rampSeconds;
-    final cruiseEnd = rampEnd + 5;
+    final cruiseEnd = rampEnd + cruiseSeconds;
     final brakeEnd = cruiseEnd + 6;
     final (speed, accel, phase) = t < 3
         ? (0.0, 0.0, 'Idle / GPS acquisition')
@@ -34,7 +41,13 @@ enum DriveScenario {
     return DriveInput(
       seconds: t,
       speed: speed,
-      accel: accel,
+      // GPS remains steady while a zero-mean 1.5 Hz acceleration disturbance
+      // exercises movement/vibration rejection independently of true speed.
+      accel:
+          accel +
+          (this == ripple && phase == 'Cruising'
+              ? 0.8 * math.sin((t - rampEnd) * 2 * math.pi * 1.5)
+              : 0),
       phase: phase,
       // Six-second loss exercises both short extrapolation and the stale limit.
       gpsAvailable: this != dropout || t < 7 || t >= 13,

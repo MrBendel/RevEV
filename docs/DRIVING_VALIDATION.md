@@ -4,6 +4,31 @@ The lab below the controls in **SPEED SIM** and **GPS DRIVE** separates two ques
 does the engine respond to known driving inputs, and is the phone receiving useful
 inputs in its actual mounting position?
 
+## Automatic session files
+
+Every engine start creates a separate JSON Lines (`.jsonl`) file in Android's
+private `files/session-logs` directory. Recording runs in all drive modes without
+pressing the lab's record button. Stop closes the file after engine coast-down;
+backgrounding, audio loss, and engine failures also close the session.
+
+With the engine stopped, open **Session logs** below the debug dashboard, select
+a recording, and choose a destination in Android's file picker. Exported files
+can be attached for analysis. Originals remain across app restarts and updates;
+clearing app data or uninstalling removes them. Nothing uploads automatically.
+
+The first line contains UTC start time, preset and settings. Sample lines contain
+monotonic elapsed seconds, actual RPM, gear, speed/acceleration fed to the engine,
+manual throttle, and the full motion diagnostics (GPS speed/age/accuracy, linear
+acceleration axes, forward acceleration, fused speed, mounting choice, requested
+RPM and applied engine throttle). The last line records stop reason and count.
+Settings are repeated per sample so mode and control changes can be correlated.
+
+These are diagnostic snapshots at approximately 150 ms intervals, not a full-rate
+raw sensor trace; actual timing is in each sample. Files flush about once a second
+and on stop, without the lab recording's three-minute limit. After an abrupt
+process kill, complete JSON lines remain usable even if the final line or stop
+record is absent. Disk errors appear beside **Session logs** and do not stop audio.
+
 ## Repeatable stationary scenarios
 
 Select an engine, output level, and shift aggressiveness with the engine stopped.
@@ -14,6 +39,8 @@ Choose **SPEED SIM**, scroll to **Driving test lab**, and select a scenario:
 | City launch | 3 s idle, 0–30 mph over 10 s, 5 s cruise, 6 s braking, 3 s stopped |
 | Brisk launch | Same phases, with 0–60 mph over 10 s |
 | GPS gap | City launch with GPS withheld from seconds 7–13 |
+| Steady cruise | 0–15 mph launch, 20 s at steady speed, then braking and stop |
+| Motion ripple | Steady-cruise profile with a ±0.8 m/s², 1.5 Hz acceleration disturbance during cruise; GPS speed stays steady |
 
 Each scenario starts a fresh native engine session and waits for at least 700 RPM
 before starting the driving profile (a 45-second timeout preserves a failed-start
@@ -33,6 +60,17 @@ summary is an observation, not a pass/fail certification of sound quality.
 Synthetic acceleration is already in vehicle coordinates. These tests cover
 speed estimation and the drivetrain, but do **not** exercise Android's GPS radio,
 gravity removal, or mounting-axis transforms. Use live recording for those.
+
+For rhythmic RPM changes, compare **Steady cruise** with **Motion ripple**.
+The second test deliberately separates steady GPS speed from alternating motion
+input, as a stress test rather than a recording of a particular bike or mount.
+The report lets you distinguish a changing requested RPM, repeated gear changes,
+and an engine that overshoots a steady requested RPM.
+
+The transmission smooths acceleration demand and requires sustained kickdown
+input, with at least 0.8 seconds between shifts. The throttle governor damps RPM
+changes and learns the cruise throttle needed by the selected engine. These
+controls preserve real sustained acceleration while rejecting brief motion pulses.
 
 ## Capture a real drive
 
@@ -87,6 +125,7 @@ cd android
 .\gradlew.bat :revev_engine:testDebugUnitTest
 cd ..
 flutter drive --driver=test_driver/integration_test.dart --target=integration_test/drive_harness_test.dart -d <android-id>
+flutter drive --driver=test_driver/integration_test.dart --target=integration_test/steady_drive_test.dart -d <android-id> --profile
 ```
 
 Android unit tests exercise the actual estimator, including missing sensors,

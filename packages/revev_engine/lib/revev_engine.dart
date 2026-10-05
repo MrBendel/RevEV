@@ -79,6 +79,11 @@ class RevevEngine {
     'testSample': ?testSample,
   });
 
+  Future<String> sessionLogDirectory() async =>
+      (await _channel.invokeMethod<String>('sessionLogDirectory'))!;
+  Future<void> exportSessionLog(String name) =>
+      _channel.invokeMethod<void>('exportSessionLog', {'name': name});
+
   Future<bool> hasLocationPermission() async {
     final granted = await _channel.invokeMethod<bool>('hasLocationPermission');
     return granted ?? false;

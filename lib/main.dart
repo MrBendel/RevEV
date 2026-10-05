@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:io';
+
+import 'session_log.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -52,6 +55,8 @@ class EngineLab extends StatefulWidget {
 
 class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
   final _engine = RevevEngine();
+  SessionLog? _sessionLog;
+  String? _logError;
   final _debug = DebugSession();
   final _sessionClock = Stopwatch();
   final _driveClock = Stopwatch();
@@ -248,6 +253,28 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
         _lastReplayGpsTick = tick;
       }
       final stats = await _engine.stats();
+      if (session == _session) {
+        await _sessionLog?.sample({
+          ..._logSettings(),
+          'rpm': stats.rpm,
+          'gear': stats.gear,
+          'speedMps': stats.vehicleSpeed,
+          'accelMps2': stats.accelMps2,
+          'motion': stats.motion,
+          'playing': stats.playing,
+          'stopping': stats.stopping,
+          'failed': stats.failed,
+          'workMs': stats.workMs,
+          'underruns': stats.underruns,
+          if (input != null)
+            'scenarioInput': input.packet(gpsTick: false, reset: false),
+        });
+        if (!stats.playing || stats.failed) {
+          await _sessionLog?.stop(
+            stats.failed ? 'Engine failed' : 'Engine stopped',
+          );
+        }
+      }
       if (mounted && session == _session && !_busy) {
         setState(() {
           _stats = stats;
@@ -342,6 +369,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
         _cancelTest('Cancelled');
         if (immediate) {
           await _engine.stop();
+          await _sessionLog?.stop('Stopped');
         } else {
           await _engine.shutdown();
         }
@@ -379,6 +407,11 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
         if (!mounted || session != _session) return;
         await _engine.controls(0, _volume);
         if (!mounted || session != _session) return;
+        await _startSessionLog();
+        if (!mounted || session != _session) {
+          await _sessionLog?.stop('Start interrupted');
+          return;
+        }
         await _engine.start(preset: _preset);
         if (!mounted || session != _session) {
           await _engine.stop();
@@ -402,6 +435,79 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
       }
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Map<String, Object?> _logSettings() => {
+    'preset': _preset,
+    'driveMode': _driveMode.name,
+    'mountingPosition': _mountingPosition.name,
+    'aggressiveness': _shiftAggressiveness,
+    'manualThrottle': _throttle,
+    'volume': _volume,
+    'scenario': _driveScenario?.name,
+  };
+
+  Future<void> _startSessionLog() async {
+    try {
+      _sessionLog ??= SessionLog(
+        Directory(await _engine.sessionLogDirectory()),
+      );
+      await _sessionLog!.start(_logSettings());
+      _logError = _sessionLog!.error;
+    } catch (e) {
+      _logError = 'Unable to save session logs: $e';
+    }
+  }
+
+  Future<void> _showSessionLogs() async {
+    try {
+      _sessionLog ??= SessionLog(
+        Directory(await _engine.sessionLogDirectory()),
+      );
+      final files = await _sessionLog!.files();
+      if (!mounted) return;
+      final selected = await showDialog<File>(
+        context: context,
+        builder: (context) => SimpleDialog(
+          title: const Text('Session logs'),
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Each engine session is saved automatically. Choose a file to export. '
+                'Files stay on this device until you export or uninstall the app.',
+              ),
+            ),
+            if (_logError != null || _sessionLog!.error != null)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(_logError ?? _sessionLog!.error!),
+              ),
+            if (files.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'No completed recordings yet. Start and stop the engine first.',
+                ),
+              ),
+            for (final file in files)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, file),
+                child: Text(file.uri.pathSegments.last),
+              ),
+          ],
+        ),
+      );
+      if (selected != null) {
+        await _engine.exportSessionLog(selected.uri.pathSegments.last);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to export session log: $e')),
+        );
+      }
     }
   }
 
@@ -566,6 +672,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
   }
 
   void _finishDebug(String status) {
+    unawaited(_sessionLog?.stop(status));
     _sessionClock.stop();
     if (_debug.startedAt != null) {
       _debug.elapsed = _sessionClock.elapsed;
@@ -578,6 +685,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
     ++_session;
     _cancelTest('Cancelled');
     _finishDriveRecording('Interrupted: app closed');
+    unawaited(_sessionLog?.stop('App closed'));
     _poll?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_engine.stop().catchError((Object _) {}));
@@ -1511,6 +1619,15 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                         ? () => unawaited(_toggle())
                         : null,
                   ),
+                  TextButton.icon(
+                    onPressed: _stats.playing || _busy
+                        ? null
+                        : _showSessionLogs,
+                    icon: const Icon(Icons.save_alt),
+                    label: const Text('Session logs'),
+                  ),
+                  if (_logError != null || _sessionLog?.error != null)
+                    Text(_logError ?? _sessionLog!.error!),
                   ExpansionTile(
                     key: const Key('mounting-settings'),
                     tilePadding: EdgeInsets.zero,
