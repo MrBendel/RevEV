@@ -164,7 +164,9 @@ public:
         const float drivetrainRpm = calcDrivetrainRpm(speedKmh, activeRatio);
 
         // Blend clutch slip at launch: at 0 km/h, idle; as car accelerates, locks to drivetrain RPM
-        const float launchRpm = idleRpm_ + std::max(normAccel, (speedKmh < 1.0f ? manualThrottle : 0.0f)) * 1500.0f;
+        // A stationary phone's acceleration must not rev a stopped engine.
+        // Screen throttle changes load in Drive; neutral is the free-rev mode.
+        const float launchRpm = idleRpm_ + (speedKmh >= 1.0f ? normAccel : 0.0f) * 1500.0f;
         float baseRpm = clutchEngaged_ * drivetrainRpm + (1.0f - clutchEngaged_) * launchRpm;
         baseRpm = std::clamp(baseRpm, idleRpm_, redlineRpm_ * 0.98f);
 

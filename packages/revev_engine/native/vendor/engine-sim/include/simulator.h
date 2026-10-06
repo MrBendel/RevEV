@@ -37,6 +37,8 @@ public:
 
     virtual void startFrame(double dt);
     bool simulateStep();
+    // RevEV: prescribe crank motion in Drive; negative disables for free revs.
+    void setPrescribedRpm(double rpm) { m_prescribedRpm = rpm; }
     virtual double getTotalExhaustFlow() const;
     int readAudioOutput(int samples, int16_t *target);
     virtual void endFrame();
@@ -117,6 +119,7 @@ private:
     double m_filteredEngineSpeed;
 
     int m_steps;
+    double m_prescribedRpm = -1.0;
 };
 
 #endif /* ATG_ENGINE_SIM_SIMULATOR_H */
