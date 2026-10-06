@@ -75,12 +75,12 @@ void main() {
       );
       expect(
         spread,
-        lessThan(180),
+        lessThan(scenario == 'steady' ? 5 : 100),
         reason: 'Steady inputs must not produce rhythmic RPM surges',
       );
       expect(
         meanError,
-        lessThan(250),
+        lessThan(5),
         reason: 'Stable RPM must still track requested RPM',
       );
     }

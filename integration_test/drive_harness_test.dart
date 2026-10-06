@@ -17,7 +17,11 @@ void main() {
     await tester.tap(find.text('SPEED SIM'));
     await tester.pumpAndSettle();
     final reports = <Object?>[];
-    for (final scenario in [DriveScenario.urban, DriveScenario.dropout]) {
+    for (final scenario in [
+      DriveScenario.urban,
+      DriveScenario.brisk,
+      DriveScenario.dropout,
+    ]) {
       await tester.scrollUntilVisible(
         find.byKey(Key('scenario-${scenario.name}')),
         250,
@@ -44,6 +48,12 @@ void main() {
       expect(report.peakRpm, greaterThan(1500));
       expect(report.samples.any((s) => (s['gear'] as int) > 1), isTrue);
       expect(report.samples.last['speedMps'] as double, lessThan(0.5));
+      expect(report.samples.last['gear'], 1);
+      expect(
+        (report.samples.last['rpm'] as num).toDouble(),
+        closeTo(900, 5),
+        reason: 'Drive must return to deterministic idle after braking',
+      );
       if (scenario == DriveScenario.dropout) {
         expect(
           report.samples.any(

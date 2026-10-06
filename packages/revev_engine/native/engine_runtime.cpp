@@ -9,7 +9,7 @@
 #include "tire_squeal_model.h"
 #include "audio_mixer.h"
 #include "transmission_model.h"
-#include "drive_rpm_governor.h"
+#include "drive_rpm_model.h"
 #include "piston_engine_simulator.h"
 #include <algorithm>
 #include <chrono>
@@ -118,7 +118,8 @@ void EngineRuntime::run() {
         TireSquealModel tireSquealModel;
         tireSquealModel.load(assetRoot_.empty() ? "" : assetRoot_ + "/es/sound-library/new/tire_squeal.wav");
         TransmissionModel transmissionModel;
-        DriveRpmGovernor driveGovernor;
+        DriveRpmModel driveRpm;
+        auto previousControlTime = clock::now();
         // engine-sim stores angular velocity in rad/s; the drivetrain and turbo
         // models take RPM. Passing rad/s capped a 6,500 RPM engine near 667 RPM.
         const float redlineRpm = static_cast<float>(units::toRpm(preset.engine->getRedline()));
@@ -148,7 +149,10 @@ void EngineRuntime::run() {
             const float aggr = aggressiveness_.load();
             const float manualThr = throttle_.load();
 
-            transmissionModel.update(0.01f, speed, accel, aggr, manualThr, driveMode);
+            const float controlDt = std::clamp(
+                std::chrono::duration<float>(t - previousControlTime).count(), 0.0001f, 0.1f);
+            previousControlTime = t;
+            transmissionModel.update(controlDt, speed, accel, aggr, manualThr, driveMode);
             gear_ = transmissionModel.gear();
             targetRpm_ = driveMode == 0 ? 0.0f : transmissionModel.targetRpm();
 
@@ -164,25 +168,16 @@ void EngineRuntime::run() {
                 if (!started || elapsed < 1.2) {
                     targetThrottle = !longCrank && !started && elapsed < crankTimeout ? 0.08f : 0.0f;
                 } else {
-                    const bool carMoving = speed > 0.5f;
-                    if (!carMoving) {
-                        targetThrottle = (manualThr > 0.01f) ? manualThr : 0.0f;
-                    } else {
-                        targetThrottle = transmissionModel.simulatedThrottle();
-
-                        // Keep explicit throttle input in charge until released.
-                        if (manualThr <= 0.01f) {
-                            targetThrottle = driveGovernor.update(0.01f,
-                                transmissionModel.targetRpm(),
-                                static_cast<float>(preset.engine->getRpm()),
-                                targetThrottle, transmissionModel.isShifting());
-                        }
-                    }
+                    targetThrottle = transmissionModel.simulatedThrottle();
                 }
             }
 
-            if (shuttingDown || driveMode == 0 || !started || elapsed < 1.2 || speed <= 0.5f || manualThr > 0.01f) {
-                driveGovernor.reset();
+            const bool prescribedDrive = driveMode != 0 && !shuttingDown && started && elapsed >= 1.2;
+            if (prescribedDrive) {
+                sim.setPrescribedRpm(driveRpm.update(controlDt, transmissionModel.targetRpm()));
+            } else {
+                driveRpm.reset();
+                sim.setPrescribedRpm(-1.0);
             }
 
             filteredThrottle += (targetThrottle - filteredThrottle) * (driveMode > 0 ? 0.15f : 0.08f);

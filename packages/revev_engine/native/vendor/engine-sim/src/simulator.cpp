@@ -94,7 +94,27 @@ bool Simulator::simulateStep() {
     }
 
     const double timestep = getTimestep();
+    // Drive is a kinematic sound source: combustion controls timbre, not speed.
+    // Project phase AND velocity every physics step before ignition/audio reads
+    // them. Merely overriding telemetry or velocity once per audio block leaves
+    // audible torque-driven RPM oscillation inside the block.
+    const bool prescribed = std::isfinite(m_prescribedRpm) &&
+        m_prescribedRpm >= 0.0 && m_prescribedRpm <= 40000.0;
+    const double omega = prescribed ? -units::rpm(m_prescribedRpm) : 0.0;
+    const double nextAngle = m_engine->getOutputCrankshaft()->m_body.theta + omega * timestep;
+    if (prescribed) {
+        for (int i = 0; i < m_engine->getCrankshaftCount(); ++i)
+            m_engine->getCrankshaft(i)->m_body.v_theta = omega;
+    }
     m_system->process(timestep, 1);
+
+    if (prescribed) {
+        for (int i = 0; i < m_engine->getCrankshaftCount(); ++i) {
+            auto &body = m_engine->getCrankshaft(i)->m_body;
+            body.theta = nextAngle;
+            body.v_theta = omega;
+        }
+    }
 
     m_engine->update(timestep);
     m_vehicle->update(timestep);

@@ -42,10 +42,15 @@ jobs:
           /tmp/revev-mixer-test
           c++ -std=c++17 -O2 packages/revev_engine/native/transmission_model_test.cpp -o /tmp/revev-transmission-test
           /tmp/revev-transmission-test
-          c++ -std=c++17 -O2 packages/revev_engine/native/drive_rpm_governor_test.cpp -o /tmp/revev-drive-governor-test
-          /tmp/revev-drive-governor-test
+          c++ -std=c++17 -O2 packages/revev_engine/native/drive_rpm_model_test.cpp -o /tmp/revev-drive-model-test
+          /tmp/revev-drive-model-test
           c++ -std=c++17 -O2 packages/revev_engine/native/tire_squeal_test.cpp -o /tmp/revev-tire-squeal-test
           /tmp/revev-tire-squeal-test
+      - name: Verify prescribed crank RPM and audio
+        run: |
+          cmake -S packages/revev_engine/native -B build/native-drive -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/native-drive --target revev_prescribed_rpm_test -j 2
+          build/native-drive/revev_prescribed_rpm_test
       - run: flutter build apk --debug
       - name: Test Android motion estimator
         working-directory: android

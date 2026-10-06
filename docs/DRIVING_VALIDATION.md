@@ -68,9 +68,25 @@ The report lets you distinguish a changing requested RPM, repeated gear changes,
 and an engine that overshoots a steady requested RPM.
 
 The transmission smooths acceleration demand and requires sustained kickdown
-input, with at least 0.8 seconds between shifts. The throttle governor damps RPM
-changes and learns the cruise throttle needed by the selected engine. These
-controls preserve real sustained acceleration while rejecting brief motion pulses.
+input, with at least 0.8 seconds between shifts. In Drive, RPM is computed as
+`speedMps * 60 * gearRatio * finalDrive / (2 * pi * tireRadius)`, with an idle
+floor, redline ceiling and acceleration-dependent clutch slip below 12 km/h.
+At rest, sensor noise cannot raise the idle target. Gear selection and transition
+progress are explicit model state: a timestamped input sequence is replayable;
+speed and acceleration alone do not uniquely identify a gear.
+
+A bounded 6,000 RPM/s trajectory drives actual crank phase and velocity at every
+physics step. Throttle changes engine load/timbre without changing that RPM.
+Shift timers and the trajectory use elapsed monotonic time, so slow audio work
+does not stretch shift timing. Startup, shutdown and Manual neutral retain free
+engine physics. The screen throttle in Drive changes load, not free-rev RPM.
+
+Native validation: build/run `revev_drive_model_test` and
+`revev_prescribed_rpm_test`. The latter exercises real combustion/audio with
+alternating throttle and verifies crank RPM and phase progression, then releases
+the prescription for shutdown. Pass the asset root and preset ID to test a
+bundled engine. `integration_test/steady_drive_test.dart` also checks the complete
+Android path with steady speed and acceleration ripple.
 
 ## Capture a real drive
 

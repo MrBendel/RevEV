@@ -33,7 +33,15 @@ responses and selectable definitions are bundled from upstream; see
 - Removed upstream frame-latency feedback: the new worker processes deterministic
   10 ms simulation frames at each definition's frequency and paces from its output queue instead.
 
-The physics and sound generation algorithms otherwise remain upstream. The
+Drive mode prescribes crank phase and angular velocity at every physics step.
+The drivetrain computes RPM from speed, selected gear, final drive and tire
+circumference, with bounded launch slip and a 6,000 RPM/s transition limit.
+Throttle controls combustion/load sound without controlling crank speed. The
+prescription is disabled during startup, shutdown and manual neutral revving.
+This intentionally supplies/removes mechanical energy as a virtual drivetrain;
+it is a sound simulation, not a torque or fuel-consumption measurement.
+
+The remaining physics and sound generation algorithms remain upstream. The
 upstream synthesis thread is deliberately not launched: the same worker executes
 physics and synthesis serially. It transfers only final PCM into a separate
 atomic SPSC buffer, so the platform audio callback never touches upstream locks.
