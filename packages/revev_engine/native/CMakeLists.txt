@@ -47,3 +47,8 @@ endif()
 
 add_executable(revev_prescribed_rpm_test prescribed_rpm_test.cpp)
 target_link_libraries(revev_prescribed_rpm_test PRIVATE revev_core)
+
+add_executable(revev_audio_bench audio_pipeline_bench.cpp)
+target_link_libraries(revev_audio_bench PRIVATE revev_core)
+
+add_executable(revev_output_continuity_test output_continuity_test.cpp)

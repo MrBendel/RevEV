@@ -6,6 +6,7 @@
 #include <string>
 #include <algorithm>
 #include <cmath>
+#include "output_continuity.h"
 
 // Single producer (simulation worker), single consumer (audio callback).
 // Lifecycle operations must be serialized by the platform adapter.
@@ -27,6 +28,9 @@ public:
     void stop();
     void setThrottle(float value);
     void setVolume(float value);
+    void setFocusGain(float value) {
+        if (std::isfinite(value)) focusGain_ = std::clamp(value, 0.0f, 1.0f);
+    }
     void setListeningMix(int mode, float strength) {
         listeningMode_ = std::clamp(mode, 0, 2);
         if (std::isfinite(strength)) rumbleStrength_ = std::clamp(strength, 0.0f, 1.0f);
@@ -48,6 +52,7 @@ public:
     float rpm() const { return rpm_.load(); }
     float targetRpm() const { return targetRpm_.load(); }
     float engineThrottle() const { return engineThrottle_.load(); }
+    float focusGain() const { return focusGain_.load(); }
     float boost() const { return boost_.load(); }
     float workMs() const { return workMs_.load(); }
     uint32_t underruns() const { return underruns_.load(); }
@@ -75,5 +80,7 @@ private:
     std::string assetRoot_, presetEntry_, presetId_;
     bool isTurbo_ = false;
     float gain_ = 0; // audio-consumer owned; reset only while callback stopped
+    std::atomic<float> focusGain_{1.0f};
+    OutputContinuity continuity_;
     std::thread worker_;
 };

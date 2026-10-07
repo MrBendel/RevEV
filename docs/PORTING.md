@@ -48,6 +48,11 @@ atomic SPSC buffer, so the platform audio callback never touches upstream locks.
 
 ## Limitations
 
+Prescribed Drive motion uses direct slider-crank placement instead of solving
+mechanical torque constraints. Combustion, fluid simulation and audio remain
+active. Master-rod engines and free-RPM operation retain the full solver.
+See [audio stability validation](AUDIO_STABILITY_VALIDATION.md) for measurements.
+
 RevEV keeps synthesizer output as normalized floating-point PCM through the
 listening mix; the legacy 16-bit API remains for upstream callers. This prevents
 irreversible hard clipping before volume control. A worker-side sample-peak

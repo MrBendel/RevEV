@@ -66,6 +66,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     private var activity: Activity? = null
     private var activityBinding: ActivityPluginBinding? = null
     private var focusRequest: AudioFocusRequest? = null
+    private val focusPolicy = AudioFocusPolicy({ nativeFocusGain(it) }, { stop() })
 
     private var locationManager: LocationManager? = null
     private var sensorManager: SensorManager? = null
@@ -125,6 +126,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     private external fun nativeStop()
     private external fun nativeShutdown()
     private external fun nativeControls(throttle: Float, volume: Float)
+    private external fun nativeFocusGain(gain: Float)
     private external fun nativeListeningMix(mode: Int, strength: Float)
     private external fun nativeDriveTelemetry(
         speedMps: Float,
@@ -454,6 +456,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     private fun stop() {
         stopSensors()
         nativeStop()
+        focusPolicy.end()
         playing = false
         replayActive = false
         EngineBridge.updateState { it.copy(playing = false, stopping = false, rpm = 0.0, gear = 0, vehicleSpeedMps = 0.0, accelMps2 = 0.0, boostBar = 0.0) }
@@ -491,12 +494,13 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
             }
             "start" -> {
                 stop()
+                val focusToken = focusPolicy.begin()
                 val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                     .setAudioAttributes(AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
                         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
                     .setOnAudioFocusChangeListener { change ->
-                        if (change != AudioManager.AUDIOFOCUS_GAIN) stop()
+                        focusPolicy.changed(change, focusToken)
                     }.build()
                 focusRequest = request
                 if (audioManager.requestAudioFocus(request) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
@@ -638,6 +642,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                         "supported" to true,
                         "targetRpm" to if (s.size > 11) s[11] else null,
                         "engineThrottle" to if (s.size > 12) s[12] else null,
+                        "audioFocusGain" to if (s.size > 13) s[13] else null,
                         "replay" to replayActive,
                         "sensorsActive" to sensorsActive,
                         "accelerometerAvailable" to (accelSensor != null),

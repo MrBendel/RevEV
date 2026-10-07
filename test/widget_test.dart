@@ -233,6 +233,12 @@ void main() {
           .session;
       expect(diagnostics.samples, greaterThan(0));
       expect(diagnostics.averageMs, 3);
+      final stopsBeforeInactive = calls.where((c) => c.method == 'stop').length;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pump();
+      expect(calls.where((c) => c.method == 'stop').length, stopsBeforeInactive);
+      expect(find.text('STOP'), findsOneWidget);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       await tester.pump();
       expect(calls.last.method, 'stop');

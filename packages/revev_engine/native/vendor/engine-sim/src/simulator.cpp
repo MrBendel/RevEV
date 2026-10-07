@@ -106,7 +106,9 @@ bool Simulator::simulateStep() {
         for (int i = 0; i < m_engine->getCrankshaftCount(); ++i)
             m_engine->getCrankshaft(i)->m_body.v_theta = omega;
     }
-    m_system->process(timestep, 1);
+    if (!prescribed || !advancePrescribedMotion(nextAngle, omega, timestep)) {
+        m_system->process(timestep, 1);
+    }
 
     if (prescribed) {
         for (int i = 0; i < m_engine->getCrankshaftCount(); ++i) {

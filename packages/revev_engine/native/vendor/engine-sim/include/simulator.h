@@ -84,6 +84,7 @@ public:
 
 protected:
     void initializeSynthesizer();
+    virtual bool advancePrescribedMotion(double angle, double omega, double dt) { return false; }
     virtual void simulateStep_();
     virtual void writeToSynthesizer() = 0;
 
