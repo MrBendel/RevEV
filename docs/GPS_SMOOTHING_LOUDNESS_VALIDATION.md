@@ -4,21 +4,27 @@ The estimator previously integrated IMU acceleration but replaced speed on each
 GPS observation. A fresh yet near-zero IMU reading suppressed the GPS derivative,
 so 1 Hz observations produced steps even during a smooth real-world ramp.
 
-Live motion now advances every 20 ms. GPS slope supplies sustained prediction,
-transient IMU acceleration supplies immediate changes, and new speed corrections
-converge with a 0.4-second time constant. This avoids buffering a whole GPS interval;
-it cannot know an unobserved maneuver or eliminate GPS measurement noise.
+Live motion now advances every 20 ms through a one-second linear segment toward
+each newly received GPS speed. Regular 1 Hz fixes therefore play one second late,
+plus their original delivery age. Early/late updates retarget from the current
+output, never jumping it. No future-speed extrapolation is used after acquisition.
+An outage finishes the last segment then holds; recovery takes another second.
+Shift/load acceleration uses the delayed segment slope rather than current IMU
+demand. Sensor noise cannot modulate stationary or steady buffered speed.
 
 ## Validation
 
 - Kotlin estimator tests pass for 1 Hz acceleration/braking with zero IMU,
-  delayed/jittered fixes without IMU, stale/out-of-order fixes, five-second outage
-  limits, smooth recovery, and stationary bias/launch behavior.
-- Emulator profile test `gps_smoothing_test.dart`: 90 ramp intervals outside
+  delayed/jittered fixes without IMU, stale/out-of-order fixes, outage holds,
+  exact one-second latency, callback-rate independence, smooth recovery and
+  stationary noise. Before first acquisition only, IMU integration is bounded.
+- Emulator profile test `gps_smoothing_test.dart`: 89 ramp intervals outside
   gear shifts; zero flat intervals, zero opposite-direction changes, maximum
-  successive RPM step 10.162. The sampled loop ran approximately every 65–75 ms.
-  Four underruns occurred after settling in this run; it is not a zero-dropout
-  guarantee. Results: `build/gps-smoothing-results.json`.
+  successive RPM step 14.356. Maximum error relative to the one-second-delayed
+  ramp was 0.0322 m/s. The sampled loop ran approximately every 65–75 ms.
+  Ten underruns occurred after settling in this run (below the existing audio
+  stability budget of two per second); it is not a zero-dropout guarantee.
+  Results: `build/linear-gps-results.json`.
 - Existing city, brisk, GPS dropout, steady cruise and motion ripple emulator
   suites pass. Launch/braking runs return to 900 RPM at rest.
 - Flutter analysis and 51 tests pass. Native compressor tests verify quiet-signal

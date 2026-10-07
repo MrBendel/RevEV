@@ -1,13 +1,14 @@
 package dev.revev.revev_engine
 
 import kotlin.math.abs
-import kotlin.math.exp
 
-/** Vehicle-axis inputs after gravity removal. Also used by the in-app replay harness.
- * Times are monotonic seconds, never wall-clock time. GPS anchors speed; IMU fills
- * the gaps. Dead reckoning is deliberately bounded rather than drifting forever.
+/** Monotonic vehicle-axis telemetry shared by live Drive and the replay harness.
+ * Each new GPS reading becomes a one-second linear segment from the currently
+ * presented speed. At 1 Hz this interpolates consecutive fixes with one second
+ * of added latency, without predicting an unknown future speed.
  */
 class DriveMotionEstimator {
+    companion object { const val interpolationSeconds = 1.0 }
     var speedMps = 0.0; private set
     var gpsSpeedMps: Double? = null; private set
     var gpsTime: Double? = null; private set
@@ -17,9 +18,9 @@ class DriveMotionEstimator {
     var rejectedFixes = 0; private set
     private var lastStep: Double? = null
     private var firstStep: Double? = null
-    private var gpsSlopeReady = false
-    private var sensorBaseline = 0.0
-    private var correction = 0.0
+    private var segmentTime = 0.0
+    private var segmentFrom = 0.0
+    private var segmentTo = 0.0
 
     fun reset() {
         speedMps = 0.0
@@ -31,70 +32,64 @@ class DriveMotionEstimator {
         rejectedFixes = 0
         lastStep = null
         firstStep = null
-        gpsSlopeReady = false
-        sensorBaseline = 0.0
-        correction = 0.0
+        segmentTime = 0.0
+        segmentFrom = 0.0
+        segmentTo = 0.0
     }
 
     fun acceleration(now: Double): Double {
-        val imuFresh = sensorTime != null && now - sensorTime!! in 0.0..0.5
-        if (gpsSlopeReady && gpsTime != null && now - gpsTime!! in 0.0..2.5) {
-            // GPS supplies the sustained slope; only the changing component of
-            // IMU acceleration supplies immediate pedal response. A quiet or
-            // biased IMU must not turn a 1 Hz GPS ramp into a staircase.
-            return (gpsAccel + if (imuFresh) sensorAccel - sensorBaseline else 0.0)
-                .coerceIn(-12.0, 12.0)
+        if (gpsTime != null) {
+            // Match load/shift demand to the delayed speed trajectory. Feeding
+            // current IMU demand here would move shifting ahead of that speed.
+            return if (now >= segmentTime && now < segmentTime + interpolationSeconds)
+                ((segmentTo - segmentFrom) / interpolationSeconds).coerceIn(-12.0, 12.0)
+            else 0.0
         }
-        return if (imuFresh) sensorAccel else 0.0
+        return if (sensorTime != null && now - sensorTime!! in 0.0..0.5) sensorAccel else 0.0
     }
 
     fun step(now: Double, forwardAccel: Double? = null) {
         if (!now.isFinite() || (lastStep != null && now < lastStep!!)) return
         if (firstStep == null) firstStep = now
         if (forwardAccel != null && forwardAccel.isFinite()) {
-            if (sensorTime == null) sensorBaseline = forwardAccel.coerceIn(-12.0, 12.0)
             sensorAccel = forwardAccel.coerceIn(-12.0, 12.0)
             sensorTime = now
         }
         val dt = (now - (lastStep ?: now)).coerceIn(0.0, 0.25)
         lastStep = now
-        sensorBaseline += (sensorAccel - sensorBaseline) * (1.0 - exp(-dt / 0.8))
-        val anchor = gpsTime ?: firstStep!!
-        if (now - anchor <= 5.0) {
+        if (gpsTime != null) {
+            val fraction = ((now - segmentTime) / interpolationSeconds).coerceIn(0.0, 1.0)
+            speedMps = segmentFrom + (segmentTo - segmentFrom) * fraction
+            return
+        }
+        // Before the first GPS fix only, retain the bounded IMU launch estimate.
+        if (now - firstStep!! <= 5.0) {
             val accel = acceleration(now)
-            // Preserve the stoplight/launch guard: small mount bias must not
-            // invent movement while GPS reports standstill. A real launch or
-            // the next moving GPS fix releases it.
-            val atRest = speedMps < 0.5 && (gpsSpeedMps == null || gpsSpeedMps!! < 0.5)
-            if (atRest && accel <= 0.25) {
-                speedMps = 0.0
-                correction = 0.0
-            } else {
-                val adjust = correction * (1.0 - exp(-dt / 0.4))
-                correction -= adjust
-                val advance = if (abs(accel) >= 0.08) accel * dt else 0.0
-                speedMps = (speedMps + advance + adjust).coerceIn(0.0, 100.0)
-            }
+            if (speedMps < 0.5 && accel <= 0.25) speedMps = 0.0
+            else if (abs(accel) >= 0.08) speedMps = (speedMps + accel * dt).coerceIn(0.0, 100.0)
         }
     }
 
     fun gps(now: Double, fixTime: Double, speed: Double, accuracyM: Double): Boolean {
         if (!now.isFinite() || !fixTime.isFinite() || !speed.isFinite() ||
             speed !in 0.0..100.0 || !accuracyM.isFinite() || accuracyM !in 0.0..50.0 ||
-            now - fixTime !in 0.0..2.5 || (gpsTime != null && fixTime <= gpsTime!!)) {
+            now - fixTime !in 0.0..2.5 || (gpsTime != null && fixTime <= gpsTime!!) ||
+            (lastStep != null && now < lastStep!!)) {
             rejectedFixes++
             return false
         }
-        val dt = fixTime - (gpsTime ?: fixTime)
+        step(now)
         val firstFix = gpsTime == null
-        gpsSlopeReady = dt in 0.2..3.0
+        val dt = fixTime - (gpsTime ?: fixTime)
         gpsAccel = if (dt in 0.2..3.0) ((speed - gpsSpeedMps!!) / dt).coerceIn(-8.0, 8.0) else 0.0
         gpsSpeedMps = speed
         gpsTime = fixTime
-        // Acquire once, then reconcile innovations over time, never jump on a
-        // subsequent fix (including recovery from an outage).
-        val anchor = (speed + acceleration(now) * (now - fixTime)).coerceIn(0.0, 100.0)
-        if (firstFix) speedMps = anchor else correction = anchor - speedMps
+        // Acquire the initial anchor immediately. Later fixes never jump output:
+        // early/late arrivals and recovery retarget from the current segment.
+        if (firstFix) speedMps = speed
+        segmentFrom = speedMps
+        segmentTo = speed
+        segmentTime = now
         return true
     }
 
@@ -105,15 +100,14 @@ class DriveMotionEstimator {
         "forwardAccelMps2" to sensorAccel,
         "gpsAccelMps2" to gpsAccel,
         "fusedSpeedMps" to speedMps,
-        "speedCorrectionMps" to correction,
+        "interpolationSeconds" to interpolationSeconds,
         "rejectedFixes" to rejectedFixes,
         "source" to when {
             gpsTime == null && firstStep != null && now - firstStep!! > 5.0 -> "Waiting for GPS · speed held"
             gpsTime == null -> "Waiting for GPS · IMU estimate only"
             now - gpsTime!! > 5.0 -> "GPS stale · speed held"
-            now - gpsTime!! > 2.5 -> "GPS gap · IMU estimate"
-            sensorTime == null || now - sensorTime!! > 0.5 -> "GPS only · no fresh accelerometer"
-            else -> "GPS + accelerometer"
+            now >= segmentTime + interpolationSeconds -> "GPS · speed held"
+            else -> "GPS · 1 s interpolation"
         }
     )
 }

@@ -68,15 +68,16 @@ RPM movement outside shift transitions, rather than treating a normal upshift
 RPM drop as a speed-estimation failure.
 
 Live GPS Drive advances the estimator on a 20 ms timer, independently of sensor
-callbacks and UI polling. After acquiring the first fix, GPS observations become
-gradual speed corrections (0.4 s exponential time constant). The GPS speed slope
-supplies sustained acceleration; high-pass IMU acceleration supplies immediate
-changes without suppressing that slope when the IMU reads near zero. GPS slope
-prediction expires at 2.5 seconds, IMU-only integration stops at five seconds,
-and the stationary guard still prevents small mount bias from inventing motion.
-This is causal prediction with correction, not interpolation of future fixes;
-it avoids deliberately buffering an extra second. A sudden maneuver between GPS
-fixes still depends on the IMU, and noisy fixes can still influence the estimate.
+callbacks and UI polling. After acquiring the first fix, each new GPS reading
+becomes the endpoint of a one-second linear segment from the current output.
+At regular 1 Hz cadence this interpolates consecutive fixes with one second of
+added delay. Existing GPS delivery age adds to that latency. Early/late fixes
+retarget from the current output without jumping speed. Missing fixes finish the
+last segment and hold its endpoint; recovery also takes one second.
+Shift/load acceleration follows the delayed segment's slope. Current IMU noise
+cannot perturb the buffered RPM trajectory. Before the first GPS fix only, a
+bounded IMU estimate remains available for up to five seconds. Diagnostics retain
+raw IMU acceleration, GPS derivative, fix age and interpolation duration.
 
 The Motion ripple scenario deliberately separates steady GPS speed from alternating motion
 input, as a stress test rather than a recording of a particular bike or mount.

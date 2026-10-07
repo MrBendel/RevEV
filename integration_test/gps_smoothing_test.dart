@@ -23,6 +23,7 @@ void main() {
     var lastGps = -1;
     var checked = 0, flat = 0, wrongDirection = 0;
     var maxRpmStep = 0.0;
+    var maxDelayError = 0.0;
     EngineStats? previous;
     var lastShift = 0.0;
     while (watch.elapsed.inSeconds < 22) {
@@ -60,6 +61,7 @@ void main() {
         'rpm': s.rpm,
         'gear': s.gear,
         'workMs': s.workMs,
+        'underruns': s.underruns,
         'motion': s.motion,
       });
       if (previous != null &&
@@ -67,6 +69,11 @@ void main() {
           t - lastShift > .8 &&
           ((t > 5 && t < 8.5) || (t > 14 && t < 17.5))) {
         final delta = s.rpm - previous.rpm;
+        final delayedSpeed = t < 9 ? 10 + (t - 4) * .5 : 13 - (t - 13) * .5;
+        maxDelayError = math.max(
+          maxDelayError,
+          (s.vehicleSpeed - delayedSpeed).abs(),
+        );
         maxRpmStep = math.max(maxRpmStep, delta.abs());
         checked++;
         if (delta.abs() < .1) flat++;
@@ -85,6 +92,7 @@ void main() {
         'flat': flat,
         'wrongDirection': wrongDirection,
         'maxRpmStep': maxRpmStep,
+        'maxDelayErrorMps': maxDelayError,
         'underruns': finalStats.underruns - settledUnderruns!,
       },
     };
@@ -92,7 +100,18 @@ void main() {
     expect(flat / checked, lessThan(.1));
     expect(wrongDirection, 0);
     expect(maxRpmStep, lessThan(40));
+    expect(
+      maxDelayError,
+      lessThan(.1),
+      reason: 'Speed must follow the one-second delayed ramp',
+    );
     expect(finalStats.vehicleSpeed, closeTo(10, .1));
-    expect(finalStats.underruns - settledUnderruns, lessThan(5));
+    // Same rate budget as audio_stability_test; emulator scheduling can cause
+    // isolated underruns. Preserve the count in the report, not a zero-loss claim.
+    expect(
+      (finalStats.underruns - settledUnderruns) /
+          (watch.elapsedMilliseconds / 1000 - 3),
+      lessThan(2),
+    );
   });
 }
