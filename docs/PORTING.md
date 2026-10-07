@@ -55,7 +55,13 @@ See [audio stability validation](AUDIO_STABILITY_VALIDATION.md) for measurements
 
 RevEV keeps synthesizer output as normalized floating-point PCM through the
 listening mix; the legacy 16-bit API remains for upstream callers. This prevents
-irreversible hard clipping before volume control. A worker-side sample-peak
+irreversible hard clipping before volume control. A worker-side RMS compressor
+after the listening mix provides up to 6 dB of makeup gain, with a -12 dBFS
+threshold, 3:1 ratio, 6 dB soft knee, 30 ms detector, 10 ms gain reduction and
+250 ms recovery. Its boost is bounded between unity and 6 dB; it does not
+continually normalize silence/noise. User volume and audio-focus gain remain
+downstream, and compressor state is recreated on each engine session.
+A worker-side sample-peak
 limiter follows the mix, with 220 samples (~5 ms) lookahead, a 0.89 ceiling
 (about -1 dBFS), and 100 ms exponential gain recovery. Fade and user volume
 follow the limiter. It uses fixed storage and adds no callback locks/allocations.

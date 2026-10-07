@@ -62,7 +62,23 @@ speed estimation and the drivetrain, but do **not** exercise Android's GPS radio
 gravity removal, or mounting-axis transforms. Use live recording for those.
 
 For rhythmic RPM changes, compare **Steady cruise** with **Motion ripple**.
-The second test deliberately separates steady GPS speed from alternating motion
+`integration_test/gps_smoothing_test.dart` additionally supplies 1 Hz speed fixes
+with zero IMU acceleration while accelerating and braking. It measures continuous
+RPM movement outside shift transitions, rather than treating a normal upshift
+RPM drop as a speed-estimation failure.
+
+Live GPS Drive advances the estimator on a 20 ms timer, independently of sensor
+callbacks and UI polling. After acquiring the first fix, GPS observations become
+gradual speed corrections (0.4 s exponential time constant). The GPS speed slope
+supplies sustained acceleration; high-pass IMU acceleration supplies immediate
+changes without suppressing that slope when the IMU reads near zero. GPS slope
+prediction expires at 2.5 seconds, IMU-only integration stops at five seconds,
+and the stationary guard still prevents small mount bias from inventing motion.
+This is causal prediction with correction, not interpolation of future fixes;
+it avoids deliberately buffering an extra second. A sudden maneuver between GPS
+fixes still depends on the IMU, and noisy fixes can still influence the estimate.
+
+The Motion ripple scenario deliberately separates steady GPS speed from alternating motion
 input, as a stress test rather than a recording of a particular bike or mount.
 The report lets you distinguish a changing requested RPM, repeated gear changes,
 and an engine that overshoots a steady requested RPM.

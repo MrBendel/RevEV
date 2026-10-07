@@ -5,6 +5,7 @@
 #include "exhaust_response.h"
 #include "listening_mix.h"
 #include "output_limiter.h"
+#include "loudness_compressor.h"
 #include "turbo_model.h"
 #include "tire_squeal_model.h"
 #include "audio_mixer.h"
@@ -113,6 +114,7 @@ void EngineRuntime::run() {
         std::array<float, 441> pcm{};
         ListeningMix listeningMix;
         OutputLimiter limiter;
+        LoudnessCompressor compressor;
         TurboModel turboModel;
         turboModel.setEnabled(isTurbo_);
         TireSquealModel tireSquealModel;
@@ -213,7 +215,7 @@ void EngineRuntime::run() {
                 const float squealSound = tireSquealModel.processSample();
                 const float mixed = AudioMixer::mix(pcm[i] * 0.75f, turboSound, squealSound);
                 const float shaped = listeningMix.process(mixed, mode, strength, filteredThrottle);
-                buffer_[(w + i) % capacity] = limiter.process(shaped) * fade;
+                buffer_[(w + i) % capacity] = limiter.process(compressor.process(shaped)) * fade;
             }
             write_.store(w + pcm.size(), std::memory_order_release);
             workMs_ = std::chrono::duration<float, std::milli>(clock::now() - t).count();

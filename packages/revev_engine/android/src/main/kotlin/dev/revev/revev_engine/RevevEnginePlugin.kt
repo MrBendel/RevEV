@@ -93,6 +93,15 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
 
     // Dead-reckoning velocity integration for instant responsiveness before/between GPS fixes
     private val motion = DriveMotionEstimator()
+    private val motionHandler by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+    private val motionTick = object : Runnable {
+        override fun run() {
+            if (!sensorsActive || !playing || currentDriveMode != 1) return
+            motion.step(nowSeconds())
+            publishMotion()
+            motionHandler.postDelayed(this, 20)
+        }
+    }
     private val replayMotion = DriveMotionEstimator()
     private var replayActive = false
     private var replayTime = 0.0
@@ -238,6 +247,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         sensorsActive = true
         resetSensorFilters()
         resetMotion()
+        motionHandler.post(motionTick)
 
         accelSensor?.let {
             sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
@@ -307,6 +317,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     }
 
     private fun stopSensors() {
+        motionHandler.removeCallbacks(motionTick)
         if (!sensorsActive) return
         sensorsActive = false
         sensorManager?.unregisterListener(this)
@@ -427,7 +438,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         currentLateralAccelMps2 = smoothedLateral
 
         // Integrate on every IMU sample, including between fresh GPS fixes.
-        motion.step(event.timestamp * 1e-9, currentAccelMps2.toDouble())
+        motion.step(nowSeconds(), currentAccelMps2.toDouble())
         publishMotion()
     }
 

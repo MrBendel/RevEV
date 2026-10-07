@@ -83,7 +83,7 @@ void main() {
       expect(content, contains('deadbandForward'));
 
       // Velocity dead-reckoning fallback
-      expect(content, contains('motion.step(event.timestamp * 1e-9'));
+      expect(content, contains('motion.step(nowSeconds(), currentAccelMps2.toDouble())'));
       expect(content, contains('motion.gps(now, fixTime, speed, accuracy)'));
     });
 
