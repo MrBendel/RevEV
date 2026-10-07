@@ -50,7 +50,7 @@ jobs:
           /tmp/revev-tire-squeal-test
       - name: Verify prescribed crank RPM and audio
         run: |
-          cmake -S packages/revev_engine/native -B build/native-drive -DCMAKE_BUILD_TYPE=Release
+          cmake -S packages/revev_engine/native -B build/native-drive -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++
           cmake --build build/native-drive --target revev_prescribed_rpm_test -j 2
           build/native-drive/revev_prescribed_rpm_test
       - run: flutter build apk --debug
