@@ -123,6 +123,11 @@ Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeShutdown(JNIEnv*, jobject) 
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeFocusGain(JNIEnv*, jobject, jfloat gain) {
+    engine.setFocusGain(gain);
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeControls(JNIEnv*, jobject, jfloat throttle, jfloat volume) {
     engine.setThrottle(throttle);
     engine.setVolume(volume);
@@ -155,9 +160,10 @@ Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeStats(JNIEnv *env, jobject)
         static_cast<double>(engine.tireSquealLevel()),
         static_cast<double>(engine.accelMps2()),
         static_cast<double>(engine.targetRpm()),
-        static_cast<double>(engine.engineThrottle())
+        static_cast<double>(engine.engineThrottle()),
+        static_cast<double>(engine.focusGain())
     };
-    auto out = env->NewDoubleArray(13);
-    env->SetDoubleArrayRegion(out, 0, 13, stats);
+    auto out = env->NewDoubleArray(14);
+    env->SetDoubleArrayRegion(out, 0, 14, stats);
     return out;
 }

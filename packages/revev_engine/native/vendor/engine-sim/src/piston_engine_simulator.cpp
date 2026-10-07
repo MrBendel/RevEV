@@ -241,7 +241,9 @@ void PistonEngineSimulator::placeCylinder(int i) {
         rod->getMasterRod()->getRodJournalPositionGlobal(rod->getJournal(), &p_x, &p_y);
     }
     else {
-        rod->getCrankshaft()->getRodJournalPositionGlobal(rod->getJournal(), &p_x, &p_y);
+        double jx, jy;
+        rod->getCrankshaft()->getRodJournalPositionLocal(rod->getJournal(), &jx, &jy);
+        rod->getCrankshaft()->m_body.localToWorld(jx, jy, &p_x, &p_y);
     }
 
     // (bank->m_x + bank->m_dx * s - p_x)^2 + (bank->m_y + bank->m_dy * s - p_y)^2 = (rod->m_length)^2
@@ -265,9 +267,10 @@ void PistonEngineSimulator::placeCylinder(int i) {
     const double e_x = s * bank->getDx() + bank->getX();
     const double e_y = s * bank->getDy() + bank->getY();
 
+    const double rodCos = std::clamp((e_x - p_x) / rod->getLength(), -1.0, 1.0);
     const double theta = ((e_y - p_y) > 0)
-        ? std::acos((e_x - p_x) / rod->getLength())
-        : 2 * constants::pi - std::acos((e_x - p_x) / rod->getLength());
+        ? std::acos(rodCos)
+        : 2 * constants::pi - std::acos(rodCos);
     rod->m_body.theta = theta - constants::pi / 2;
 
     double cl_x, cl_y;
@@ -278,6 +281,37 @@ void PistonEngineSimulator::placeCylinder(int i) {
     piston->m_body.p_x = e_x;
     piston->m_body.p_y = e_y;
     piston->m_body.theta = bank->getAngle() + constants::pi;
+    double pinX, pinY;
+    piston->m_body.localToWorld(0, piston->getWristPinLocation(), &pinX, &pinY);
+    piston->m_body.p_x += e_x - pinX;
+    piston->m_body.p_y += e_y - pinY;
+}
+
+bool PistonEngineSimulator::advancePrescribedMotion(double angle, double omega, double dt) {
+    // Ordinary slider-crank geometry has a closed-form solution. Drive already
+    // prescribes crank motion, so a torque/constraint solve cannot affect RPM.
+    // Keep the full solver for articulated/master-rod engines.
+    for (int i = 0; i < m_engine->getCylinderCount(); ++i)
+        if (m_engine->getConnectingRod(i)->getMasterRod() != nullptr) return false;
+    for (int i = 0; i < m_engine->getCrankshaftCount(); ++i) {
+        auto &body = m_engine->getCrankshaft(i)->m_body;
+        body.theta = angle;
+        body.v_theta = omega;
+    }
+    for (int i = 0; i < m_engine->getCylinderCount(); ++i) {
+        auto &piston = m_engine->getPiston(i)->m_body;
+        auto &rod = m_engine->getConnectingRod(i)->m_body;
+        const double px = piston.p_x, py = piston.p_y;
+        const double rx = rod.p_x, ry = rod.p_y, rt = rod.theta;
+        placeCylinder(i);
+        piston.v_x = (piston.p_x - px) / dt;
+        piston.v_y = (piston.p_y - py) / dt;
+        piston.v_theta = 0;
+        rod.v_x = (rod.p_x - rx) / dt;
+        rod.v_y = (rod.p_y - ry) / dt;
+        rod.v_theta = std::remainder(rod.theta - rt, 2 * constants::pi) / dt;
+    }
+    return true;
 }
 
 void PistonEngineSimulator::simulateStep_() {

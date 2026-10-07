@@ -39,6 +39,7 @@ class PistonEngineSimulator : public Simulator {
 
     protected:
         virtual void simulateStep_() override;
+        bool advancePrescribedMotion(double angle, double omega, double dt) override;
 
     protected:
         void placeAndInitialize();
