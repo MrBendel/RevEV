@@ -28,6 +28,11 @@ can still produce errors; physical driving validation is needed.
   underruns in this run; this is not a physical-device dropout guarantee.
   Results: `build/fusion-results.json`.
 - Native transmission tests pass, including load/RPM independence.
+- City, brisk, GPS dropout, steady and ripple emulator suites pass. Steady RPM
+  spread (P95-P5) was 0.382; ripple spread 49.229, with mean target error 2.569 RPM.
+  An initial ripple run under concurrent host build load failed the 5 RPM error
+  threshold (7.325 RPM); rerunning without concurrent builds passed unchanged.
+- Flutter analysis is clean and all 51 Flutter tests pass.
 
 ## Loudness measurements
 
