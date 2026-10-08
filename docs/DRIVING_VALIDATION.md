@@ -63,21 +63,26 @@ gravity removal, or mounting-axis transforms. Use live recording for those.
 
 For rhythmic RPM changes, compare **Steady cruise** with **Motion ripple**.
 `integration_test/gps_smoothing_test.dart` additionally supplies 1 Hz speed fixes
-with zero IMU acceleration while accelerating and braking. It measures continuous
-RPM movement outside shift transitions, rather than treating a normal upshift
-RPM drop as a speed-estimation failure.
+with matching IMU acceleration and 300 ms delayed fixes while accelerating and
+braking. It checks current speed accuracy and RPM direction outside shifts.
 
-Live GPS Drive advances the estimator on a 20 ms timer, independently of sensor
-callbacks and UI polling. After acquiring the first fix, each new GPS reading
-becomes the endpoint of a one-second linear segment from the current output.
-At regular 1 Hz cadence this interpolates consecutive fixes with one second of
-added delay. Existing GPS delivery age adds to that latency. Early/late fixes
-retarget from the current output without jumping speed. Missing fixes finish the
-last segment and hold its endpoint; recovery also takes one second.
-Shift/load acceleration follows the delayed segment's slope. Current IMU noise
-cannot perturb the buffered RPM trajectory. Before the first GPS fix only, a
-bounded IMU estimate remains available for up to five seconds. Diagnostics retain
-raw IMU acceleration, GPS derivative, fix age and interpolation duration.
+Live GPS Drive advances on a 20 ms timer independently of sensor callbacks and
+UI polling. A two-state Kalman filter estimates speed and forward accelerometer
+bias. Mount/gravity correction and the existing 120 ms acceleration low-pass
+filter run upstream. IMU integration gives immediate changes between GPS fixes.
+GPS corrects accumulated error using Android speed accuracy when supplied
+(default speed standard deviation: 0.5 m/s; position accuracy is only a gate).
+A three-second integral history aligns delayed GPS observations to their fix
+timestamps. Covariance includes a conservative delay-noise allowance; this is
+an approximate delayed-observation filter, not a full navigation INS.
+
+A 250 ms exponential correction removes GPS correction jumps from presented
+speed without delaying the IMU response. Corrected IMU acceleration drives load
+and shift demand; fresh GPS acceleration is a fallback if IMU data is missing.
+IMU samples expire after 500 ms; prediction stops five seconds after the latest
+GPS fix. Long scheduling gaps are not integrated. Outage recovery reacquires
+speed without learning a false accelerometer bias from unobserved movement.
+Diagnostics include corrected acceleration, estimated bias and speed variance.
 
 The Motion ripple scenario deliberately separates steady GPS speed from alternating motion
 input, as a stress test rather than a recording of a particular bike or mount.

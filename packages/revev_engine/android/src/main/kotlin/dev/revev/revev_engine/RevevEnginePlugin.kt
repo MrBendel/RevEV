@@ -453,7 +453,9 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         val speed = if (location.hasSpeed()) location.speed.toDouble() else Double.NaN
         val accuracy = if (location.hasAccuracy()) location.accuracy.toDouble() else Double.NaN
         motion.step(now)
-        if (motion.gps(now, fixTime, speed, accuracy)) {
+        val speedAccuracy = if (android.os.Build.VERSION.SDK_INT >= 26 && location.hasSpeedAccuracy())
+            location.speedAccuracyMetersPerSecond.toDouble() else null
+        if (motion.gps(now, fixTime, speed, accuracy, speedAccuracy)) {
             lastLocation = location
             gpsAccuracyM = location.accuracy
             locationError = null
@@ -592,7 +594,8 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                     replayTime = time
                     replayMotion.step(time, (sample["accelMps2"] as? Number)?.toDouble())
                     (sample["gpsSpeedMps"] as? Number)?.let {
-                        replayMotion.gps(time, time, it.toDouble(), 5.0)
+                        val fixTime = (sample["gpsTimeSeconds"] as? Number)?.toDouble() ?: time
+                        replayMotion.gps(time, fixTime, it.toDouble(), 5.0)
                     }
                     currentSpeedMps = replayMotion.speedMps.toFloat()
                     currentAccelMps2 = replayMotion.acceleration(time).toFloat()

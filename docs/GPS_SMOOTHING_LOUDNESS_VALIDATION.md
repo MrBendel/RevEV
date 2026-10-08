@@ -1,34 +1,33 @@
-# GPS smoothing and loudness — 2026-10-07
+# GPS fusion and loudness � 2026-10-07
 
-The estimator previously integrated IMU acceleration but replaced speed on each
-GPS observation. A fresh yet near-zero IMU reading suppressed the GPS derivative,
-so 1 Hz observations produced steps even during a smooth real-world ramp.
+The one-second interpolation build removed GPS steps but felt slow in driving.
+The replacement estimates speed and accelerometer bias together, integrating
+mount/gravity-corrected acceleration between GPS readings. GPS provides drift
+correction, with a short integral history for measurement delivery delays.
+Corrections blend into presented speed with a 250 ms time constant; IMU motion
+has no deliberate one-second delay. Existing input low-pass filtering remains.
+RPM stays prescribed from speed/gear, while corrected acceleration controls load
+and shift demand. The native transmission test checks that acceleration changes
+load immediately without changing RPM at a fixed speed and gear.
 
-Live motion now advances every 20 ms through a one-second linear segment toward
-each newly received GPS speed. Regular 1 Hz fixes therefore play one second late,
-plus their original delivery age. Early/late updates retarget from the current
-output, never jumping it. No future-speed extrapolation is used after acquisition.
-An outage finishes the last segment then holds; recovery takes another second.
-Shift/load acceleration uses the delayed segment slope rather than current IMU
-demand. Sensor noise cannot modulate stationary or steady buffered speed.
+This is an approximate delayed-observation Kalman filter with conservative
+process/delay uncertainty, not a full orientation/navigation filter. It reuses
+existing phone mount and gravity mapping. Incorrect mounting and phone handling
+can still produce errors; physical driving validation is needed.
 
 ## Validation
 
-- Kotlin estimator tests pass for 1 Hz acceleration/braking with zero IMU,
-  delayed/jittered fixes without IMU, stale/out-of-order fixes, outage holds,
-  exact one-second latency, callback-rate independence, smooth recovery and
-  stationary noise. Before first acquisition only, IMU integration is bounded.
-- Emulator profile test `gps_smoothing_test.dart`: 89 ramp intervals outside
-  gear shifts; zero flat intervals, zero opposite-direction changes, maximum
-  successive RPM step 14.356. Maximum error relative to the one-second-delayed
-  ramp was 0.0322 m/s. The sampled loop ran approximately every 65–75 ms.
-  Ten underruns occurred after settling in this run (below the existing audio
-  stability budget of two per second); it is not a zero-dropout guarantee.
-  Results: `build/linear-gps-results.json`.
-- Existing city, brisk, GPS dropout, steady cruise and motion ripple emulator
-  suites pass. Launch/braking runs return to 900 RPM at rest.
-- Flutter analysis and 51 tests pass. Native compressor tests verify quiet-signal
-  gain, bounded loud-signal boost, silence, restart and peak limiting.
+- 14 Kotlin tests pass, including immediate acceleration/braking, 300 ms delayed
+  GPS at 1 Hz, bias convergence, confidence weighting, correction continuity,
+  sensor expiration, bounded GPS outages/recovery, standstill, launch, braking to
+  zero, invalid/outlier fixes, reset and callback-rate independence.
+- Emulator profile test `gps_smoothing_test.dart`: 91 ramp intervals outside
+  shifts; zero flat intervals, zero wrong-direction changes, maximum successive
+  RPM step 7.793. Maximum error against current speed was 0.01344 m/s, with GPS
+  delivered 300 ms late and matching IMU acceleration. Zero post-settling audio
+  underruns in this run; this is not a physical-device dropout guarantee.
+  Results: `build/fusion-results.json`.
+- Native transmission tests pass, including load/RPM independence.
 
 ## Loudness measurements
 

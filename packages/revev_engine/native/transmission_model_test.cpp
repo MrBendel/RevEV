@@ -36,6 +36,20 @@ int main() {
     require(tx.gear() == 1, "Must remain in 1st gear at standstill with manual throttle");
     require(std::abs(tx.simulatedThrottle() - 0.65f) < 0.01f, "Standstill manual throttle not respected");
 
+    // GPS Drive load follows acceleration independently of RPM at a fixed gear.
+    TransmissionModel load;
+    const double singleRatio[] = {2.06};
+    load.configure(1, singleRatio, 3.44, 8000.0, 900.0, 0.31);
+    for (int i = 0; i < 100; ++i) load.update(.01f, 10.0f, 0.0f, .5f, 0.0f, 1);
+    const float cruiseLoad = load.simulatedThrottle();
+    const float cruiseRpm = load.targetRpm();
+    load.update(.01f, 10.0f, 1.0f, .5f, 0.0f, 1);
+    require(load.simulatedThrottle() > cruiseLoad, "Acceleration must increase GPS Drive load immediately");
+    require(std::abs(load.targetRpm()-cruiseRpm)<.01f, "Load must not change fixed-gear RPM");
+    load.update(.01f, 10.0f, -1.0f, .5f, 0.0f, 1);
+    require(load.simulatedThrottle() < cruiseLoad, "Braking must reduce GPS Drive load immediately");
+    require(std::abs(load.targetRpm()-cruiseRpm)<.01f, "Braking load must not change fixed-gear RPM");
+
     // 3. Hard acceleration pull (flooring it: 2.8 m/s^2, 1.0 aggressiveness):
     // Should wind up 1st gear all the way near redline before shifting
     float speed = 0.0f;
