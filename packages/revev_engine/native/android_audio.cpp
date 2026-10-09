@@ -161,9 +161,10 @@ Java_dev_revev_revev_1engine_RevevEnginePlugin_nativeStats(JNIEnv *env, jobject)
         static_cast<double>(engine.accelMps2()),
         static_cast<double>(engine.targetRpm()),
         static_cast<double>(engine.engineThrottle()),
-        static_cast<double>(engine.focusGain())
+        static_cast<double>(engine.focusGain()),
+        static_cast<double>(engine.workCpuMs())
     };
-    auto out = env->NewDoubleArray(14);
-    env->SetDoubleArrayRegion(out, 0, 14, stats);
+    auto out = env->NewDoubleArray(15);
+    env->SetDoubleArrayRegion(out, 0, 15, stats);
     return out;
 }

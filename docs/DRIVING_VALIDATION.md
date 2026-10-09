@@ -9,7 +9,8 @@ inputs in its actual mounting position?
 Every engine start creates a separate JSON Lines (`.jsonl`) file in Android's
 private `files/session-logs` directory. Recording runs in all drive modes without
 pressing the lab's record button. Stop closes the file after engine coast-down;
-backgrounding, audio loss, and engine failures also close the session.
+audio loss and engine failures also close the session. Normal playback continues
+while the screen is off through an Android foreground service and partial wake lock.
 
 With the engine stopped, open **Session logs** below the debug dashboard, select
 a recording, and choose a destination in Android's file picker. Exported files
@@ -127,8 +128,9 @@ Android path with steady speed and acceleration ripple.
    0–60 road run.
 5. After parking, finish the recording and copy the report. The graph and report
    survive Stop or a background interruption within the current app session.
-   Backgrounding still stops audio and ends the recording; background service
-   and Android Auto lifecycle work is separate from this harness.
+   Backgrounding during a lab recording still stops audio and ends that recording.
+   Normal playback outside the lab continues when locked, with a notification Stop
+   control. GPS Drive keeps its native motion updates active.
 
 No location coordinates are captured in the report. It stays in memory until
 copied; it is not automatically uploaded or saved across app restarts.
@@ -172,3 +174,20 @@ profiles, bounded reports, native packet dispatch and interruption paths. The
 device integration test runs launch and GPS-gap scenarios against the native
 engine and checks RPM, shifts and stopping. Emulator performance and synthetic
 inputs cannot validate the physical phone mount or in-car audio route.
+
+## Background playback validation (2026-10-09)
+
+`background_audio_test.dart` exercises actual screen lock and three fresh audio
+sessions. Screen lock and stable RPM checks passed. The audio-quality check remains
+failing: sessions recorded 14, 107, and 0 underruns over approximately 40, 20, and
+20 seconds respectively. Median synthesis CPU times were 6.85, 8.50, and 8.11 ms
+per 10 ms block. This does not establish that extended-use distortion is fixed.
+Motion diagnostics now include `workCpuMs` alongside wall-clock `workMs`, and
+`backgroundPlaybackActive`. Each worker requests Android audio thread priority.
+
+`background_gps_service_test.dart` checks fresh sensor updates while locked and
+external MediaSession Stop without relying on a Flutter method-call listener.
+Host automation grants location at GPS_PERMISSION_READY, locks at GPS_LOCK_READY,
+then dispatches `adb shell cmd media_session dispatch stop` at MEDIA_STOP_READY.
+
+The GPS service recheck passed: all 50 samples stayed fresh through screen lock, and external media Stop released playback and the wake lock.

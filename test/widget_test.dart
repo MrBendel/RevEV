@@ -201,55 +201,60 @@ void main() {
       await tester.pump();
     },
   );
-  testWidgets(
-    'starts at zero throttle, forwards controls, stops on background',
-    (tester) async {
-      tester.view.physicalSize = const Size(430, 1100);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      await tester.pumpWidget(const RevEvApp());
-      expect(
-        tester.widget<Slider>(find.byKey(const Key('throttle'))).onChanged,
-        isNull,
-      );
-      await tester.tap(find.byKey(const Key('start')));
-      await tester.pump();
-      expect(
-        calls.firstWhere((c) => c.method == 'controls').arguments['throttle'],
-        0.0,
-      );
-      expect(
-        calls.indexWhere((c) => c.method == 'controls'),
-        lessThan(calls.indexWhere((c) => c.method == 'start')),
-      );
-      expect(find.text('STOP'), findsOneWidget);
-      tester.widget<Slider>(find.byKey(const Key('throttle'))).onChanged!(0.4);
-      await tester.pump();
-      expect(calls.last.arguments['throttle'], 0.4);
-      await tester.pump(const Duration(milliseconds: 150));
-      final diagnostics = tester
-          .widget<DebugDashboard>(find.byType(DebugDashboard))
-          .session;
-      expect(diagnostics.samples, greaterThan(0));
-      expect(diagnostics.averageMs, 3);
-      final stopsBeforeInactive = calls.where((c) => c.method == 'stop').length;
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-      await tester.pump();
-      expect(calls.where((c) => c.method == 'stop').length, stopsBeforeInactive);
-      expect(find.text('STOP'), findsOneWidget);
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-      await tester.pump();
-      expect(calls.last.method, 'stop');
-      expect(find.text('START'), findsOneWidget);
-      expect(diagnostics.status, 'Stopped on background');
-      expect(diagnostics.averageMs, 3);
-      await tester.pumpWidget(const SizedBox());
-      await tester.pump();
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    },
-  );
+  testWidgets('normal playback survives inactive and paused, stops on detach', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(430, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(const RevEvApp());
+    expect(
+      tester.widget<Slider>(find.byKey(const Key('throttle'))).onChanged,
+      isNull,
+    );
+    await tester.tap(find.byKey(const Key('start')));
+    await tester.pump();
+    expect(
+      calls.firstWhere((c) => c.method == 'controls').arguments['throttle'],
+      0.0,
+    );
+    expect(
+      calls.indexWhere((c) => c.method == 'controls'),
+      lessThan(calls.indexWhere((c) => c.method == 'start')),
+    );
+    expect(find.text('STOP'), findsOneWidget);
+    tester.widget<Slider>(find.byKey(const Key('throttle'))).onChanged!(0.4);
+    await tester.pump();
+    expect(calls.last.arguments['throttle'], 0.4);
+    await tester.pump(const Duration(milliseconds: 150));
+    final diagnostics = tester
+        .widget<DebugDashboard>(find.byType(DebugDashboard))
+        .session;
+    expect(diagnostics.samples, greaterThan(0));
+    expect(diagnostics.averageMs, 3);
+    final stopsBeforeInactive = calls.where((c) => c.method == 'stop').length;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    expect(calls.where((c) => c.method == 'stop').length, stopsBeforeInactive);
+    expect(find.text('STOP'), findsOneWidget);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    expect(calls.where((c) => c.method == 'stop').length, stopsBeforeInactive);
+    expect(find.text('STOP'), findsOneWidget);
+    expect(diagnostics.status, 'Running');
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.detached);
+    await tester.pump();
+    expect(calls.last.method, 'stop');
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(find.text('START'), findsOneWidget);
+    expect(diagnostics.averageMs, 3);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  });
   testWidgets('shows startup failures without claiming the engine is running', (
     tester,
   ) async {

@@ -640,8 +640,11 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
+    // Normal playback belongs to the Android foreground service, not the screen.
+    // Scripted lab controls and incomplete starts still cancel on background.
+    if (state == AppLifecycleState.detached ||
+        (state == AppLifecycleState.paused &&
+            (_testing || _driveActive || _busy))) {
       unawaited(_pause());
     } else if (state == AppLifecycleState.resumed) {
       if (mounted && !_stats.playing) {

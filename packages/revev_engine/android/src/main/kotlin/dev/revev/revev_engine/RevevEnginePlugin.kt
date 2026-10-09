@@ -102,6 +102,17 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
             motionHandler.postDelayed(this, 20)
         }
     }
+    // Cleanup must not depend on Flutter polling while its view is suspended.
+    private val playbackTick = object : Runnable {
+        override fun run() {
+            if (!playing) return
+            val stats = nativeStats()
+            if (stats[3] != 0.0 || stats[4] != 0.0) {
+                stop()
+                if (stats[3] != 0.0) EngineBridge.updateState { it.copy(failed = true) }
+            } else motionHandler.postDelayed(this, 500)
+        }
+    }
     private val replayMotion = DriveMotionEstimator()
     private var replayActive = false
     private var replayTime = 0.0
@@ -285,6 +296,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         if (!hasLocationPermission()) return
         val mgr = locationManager ?: return
         try {
+            if (playing) EnginePlaybackService.start(context, true)
             val providers = mgr.allProviders ?: listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
             for (provider in providers) {
                 if (provider == LocationManager.PASSIVE_PROVIDER) {
@@ -467,6 +479,8 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
 
     private fun stop() {
+        motionHandler.removeCallbacks(playbackTick)
+        EnginePlaybackService.stop(context)
         stopSensors()
         nativeStop()
         focusPolicy.end()
@@ -529,6 +543,14 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                     if (playing) {
                         val chosenPreset = call.argument<String>("preset") ?: "porsche/911_carrera_32"
                         EngineBridge.updateState { it.copy(playing = true, stopping = false, failed = false, presetId = chosenPreset) }
+                        try {
+                            EnginePlaybackService.start(context, currentDriveMode == 1 && hasLocationPermission())
+                        } catch (e: Exception) {
+                            stop()
+                            result.error("background_audio", "Could not start playback service: ${e.message}", null)
+                            return
+                        }
+                        motionHandler.post(playbackTick)
                         if (currentDriveMode == 1) {
                             startSensors()
                         }
@@ -584,6 +606,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                     if (!sensorsActive) startSensors()
                 } else if (sensorsActive) {
                     stopSensors()
+                    if (playing) EnginePlaybackService.start(context, false)
                 }
 
                 val sample = call.argument<Map<String, Any?>>("testSample")
@@ -657,6 +680,8 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                         "targetRpm" to if (s.size > 11) s[11] else null,
                         "engineThrottle" to if (s.size > 12) s[12] else null,
                         "audioFocusGain" to if (s.size > 13) s[13] else null,
+                        "backgroundPlaybackActive" to EnginePlaybackService.active,
+                        "workCpuMs" to if (s.size > 14) s[14] else null,
                         "replay" to replayActive,
                         "sensorsActive" to sensorsActive,
                         "accelerometerAvailable" to (accelSensor != null),
@@ -716,9 +741,13 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     }
 
     override fun onStopEngine() {
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
+        val action = Runnable {
+            // Notification/media controls must work even when Dart is suspended.
+            stop()
             channel.invokeMethod("onRemoteStop", null)
         }
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) action.run()
+        else motionHandler.post(action)
     }
 
     override fun onSetPreset(presetId: String) {
