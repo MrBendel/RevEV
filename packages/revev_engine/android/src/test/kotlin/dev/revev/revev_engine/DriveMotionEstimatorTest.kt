@@ -72,4 +72,23 @@ class DriveMotionEstimatorTest {
         estimator.step(0.1, -3.0)
         assertEquals(0.0, estimator.speedMps)
     }
+
+    @Test fun launchIntegrationSustainsThroughLowSpeedRegion() {
+        val estimator = DriveMotionEstimator()
+        estimator.gps(0.0, 0.0, 0.0, 5.0)
+        estimator.step(0.0, 1.0)
+        estimator.step(0.02, 1.0)
+        assertTrue(estimator.speedMps > 0.0)
+        // Fluctuation to 0.20 m/s^2 before 0.5 m/s should continue integrating rather than snapping to 0
+        val speedBefore = estimator.speedMps
+        estimator.step(0.04, 0.20)
+        assertTrue(estimator.speedMps >= speedBefore)
+    }
+
+    @Test fun acceptsFixesWithNearZeroLatencyOrSubMillisecondClockJitter() {
+        val estimator = DriveMotionEstimator()
+        assertTrue(estimator.gps(1.0, 1.0, 5.0, 5.0))
+        assertTrue(estimator.gps(1.995, 2.0, 6.0, 5.0))
+        assertEquals(6.0, estimator.speedMps, 0.01)
+    }
 }

@@ -198,8 +198,15 @@ public:
             } else {
                 // GPS Drive:
                 if (speedKmh < 1.0f) {
-                    // Standstill / Stoplight: zero throttle (idle) unless user manually presses throttle on screen
-                    simulatedThrottle_ = (manualThrottle > 0.01f) ? std::clamp(manualThrottle, 0.0f, 1.0f) : 0.0f;
+                    if (manualThrottle > 0.01f) {
+                        simulatedThrottle_ = std::clamp(manualThrottle, 0.0f, 1.0f);
+                    } else if (normAccel > 0.05f) {
+                        // Launch from standstill: throttle proportional to launch acceleration
+                        simulatedThrottle_ = std::clamp(normAccel, 0.0f, 1.0f);
+                    } else {
+                        // Standstill / Stoplight: zero throttle (idle)
+                        simulatedThrottle_ = 0.0f;
+                    }
                 } else if (accelMps2 > 0.05f) {
                     // Positive acceleration: throttle proportional to demand
                     simulatedThrottle_ = std::clamp(cruiseThrottle + normAccel * (1.0f - cruiseThrottle), 0.0f, 1.0f);

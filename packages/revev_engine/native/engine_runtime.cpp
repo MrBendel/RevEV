@@ -164,7 +164,7 @@ void EngineRuntime::run() {
                 if (!started || elapsed < 1.2) {
                     targetThrottle = !longCrank && !started && elapsed < crankTimeout ? 0.08f : 0.0f;
                 } else {
-                    const bool carMoving = speed > 0.5f;
+                    const bool carMoving = speed > 0.5f || accel > 0.20f;
                     if (!carMoving) {
                         targetThrottle = (manualThr > 0.01f) ? manualThr : 0.0f;
                     } else {
@@ -181,7 +181,7 @@ void EngineRuntime::run() {
                 }
             }
 
-            if (shuttingDown || driveMode == 0 || !started || elapsed < 1.2 || speed <= 0.5f || manualThr > 0.01f) {
+            if (shuttingDown || driveMode == 0 || !started || elapsed < 1.2 || (!carMoving && manualThr <= 0.01f)) {
                 driveGovernor.reset();
             }
 

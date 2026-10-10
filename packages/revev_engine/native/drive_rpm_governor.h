@@ -16,10 +16,12 @@ public:
         }
         dt = std::min(dt, 0.05f);
         demand = std::clamp(demand, 0.0f, 1.0f);
-        // Estimate cruise throttle from desired speed, not each acceleration
-        // pulse. Acceleration already affects launch RPM and gear selection.
-        // Feeding it into throttle again fights the speed loop on rough mounts.
-        const float base = std::clamp(0.07f + (targetRpm - 1500.0f) * 0.00004f, 0.0f, 0.30f);
+        // Estimate cruise throttle from desired speed.
+        const float cruiseBase = std::clamp(0.07f + (targetRpm - 1500.0f) * 0.00004f, 0.0f, 0.30f);
+        // Under acceleration, demand opens throttle for combustion load and power.
+        // Under braking/coasting, demand drops to near-zero (0.02) to produce overrun pops.
+        // At cruise, demand tracks the cruise maintenance throttle.
+        const float base = (demand > 0.05f) ? std::max(demand, cruiseBase) : demand;
         if (!initialized_) {
             filteredRpm_ = rpm;
             feedForward_ = base;
@@ -29,8 +31,11 @@ public:
         filteredRpm_ += (rpm - filteredRpm_) * dt / (0.10f + dt);
         const float measuredSlope = (filteredRpm_ - previousRpm) / dt;
         slope_ += (measuredSlope - slope_) * dt / (0.15f + dt);
-        feedForward_ += (base - feedForward_) * dt / (0.20f + dt);
-        if (shifting) return demand; // Preserve deliberate torque cuts/rev blips.
+        feedForward_ += (base - feedForward_) * dt / (0.50f + dt);
+        if (shifting) {
+            feedForward_ = demand;
+            return demand; // Preserve deliberate torque cuts/rev blips.
+        }
 
         const float error = targetRpm - filteredRpm_;
         const float correction = error * 0.00010f - slope_ * 0.000025f;
