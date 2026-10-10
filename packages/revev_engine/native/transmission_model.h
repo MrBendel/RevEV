@@ -166,8 +166,11 @@ public:
         // Blend clutch slip at launch: at 0 km/h, idle; as car accelerates, locks to drivetrain RPM
         // A stationary phone's acceleration must not rev a stopped engine.
         // Screen throttle changes load in Drive; neutral is the free-rev mode.
-        const float launchRpm = idleRpm_ + (speedKmh >= 1.0f ? normAccel : 0.0f) * 1500.0f;
-        float baseRpm = clutchEngaged_ * drivetrainRpm + (1.0f - clutchEngaged_) * launchRpm;
+        const float launchRpm = idleRpm_ + std::clamp(speedKmh, 0.0f, 1.0f) * normAccel * 1500.0f;
+        // In-gear load flare: under acceleration, torque converter / load flare (250-450 RPM)
+        // revs the engine into the powerband instead of staying rigidly frozen to delayed GPS speed.
+        const float loadFlareRpm = (speedKmh >= 1.0f) ? (clutchEngaged_ * normAccel * (250.0f + 200.0f * effectiveAggression)) : 0.0f;
+        float baseRpm = clutchEngaged_ * drivetrainRpm + (1.0f - clutchEngaged_) * launchRpm + loadFlareRpm;
         baseRpm = std::clamp(baseRpm, idleRpm_, redlineRpm_ * 0.98f);
 
         // Throttle synthesis:
@@ -200,8 +203,15 @@ public:
             } else {
                 // GPS Drive:
                 if (speedKmh < 1.0f) {
-                    // Standstill / Stoplight: zero throttle (idle) unless user manually presses throttle on screen
-                    simulatedThrottle_ = (manualThrottle > 0.01f) ? std::clamp(manualThrottle, 0.0f, 1.0f) : 0.0f;
+                    if (manualThrottle > 0.01f) {
+                        simulatedThrottle_ = std::clamp(manualThrottle, 0.0f, 1.0f);
+                    } else if (normAccel > 0.05f) {
+                        // Launch from standstill: throttle proportional to launch acceleration
+                        simulatedThrottle_ = std::clamp(normAccel, 0.0f, 1.0f);
+                    } else {
+                        // Standstill / Stoplight: zero throttle (idle)
+                        simulatedThrottle_ = 0.0f;
+                    }
                 } else if (accelMps2 > 0.05f) {
                     // Positive acceleration: throttle proportional to demand
                     simulatedThrottle_ = std::clamp(cruiseThrottle + normAccel * (1.0f - cruiseThrottle), 0.0f, 1.0f);

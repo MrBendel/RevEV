@@ -32,8 +32,8 @@ class DriveMotionEstimator {
     fun acceleration(now: Double): Double {
         // A GPS derivative is a fallback when the IMU is unavailable, not a second
         // copy of acceleration to add to the IMU and double the driver's demand.
-        return if (sensorTime != null && now - sensorTime!! in 0.0..0.5) sensorAccel
-        else if (gpsTime != null && now - gpsTime!! in 0.0..2.5) gpsAccel else 0.0
+        return if (sensorTime != null && (now - sensorTime!! in 0.0..0.5 || abs(now - sensorTime!!) < 0.1)) sensorAccel
+        else if (gpsTime != null && (now - gpsTime!! in 0.0..2.5 || abs(now - gpsTime!!) < 0.1)) gpsAccel else 0.0
     }
 
     fun step(now: Double, forwardAccel: Double? = null) {
@@ -52,10 +52,12 @@ class DriveMotionEstimator {
             // invent movement while GPS reports standstill. A real launch or
             // the next moving GPS fix releases it.
             val atRest = speedMps < 0.5 && (gpsSpeedMps == null || gpsSpeedMps!! < 0.5)
-            if (atRest && accel <= 0.25) {
+            if (atRest && speedMps == 0.0 && accel <= 0.25) {
                 speedMps = 0.0
             } else if (abs(accel) >= 0.08) {
                 speedMps = (speedMps + accel * dt).coerceIn(0.0, 100.0)
+            } else if (atRest && accel < 0.08) {
+                speedMps = (speedMps - 0.5 * dt).coerceAtLeast(0.0)
             }
         }
     }
@@ -63,12 +65,12 @@ class DriveMotionEstimator {
     fun gps(now: Double, fixTime: Double, speed: Double, accuracyM: Double): Boolean {
         if (!now.isFinite() || !fixTime.isFinite() || !speed.isFinite() ||
             speed !in 0.0..100.0 || !accuracyM.isFinite() || accuracyM !in 0.0..50.0 ||
-            now - fixTime !in 0.0..2.5 || (gpsTime != null && fixTime <= gpsTime!!)) {
+            (now - fixTime) !in -0.05..2.5 || (gpsTime != null && fixTime <= gpsTime!!)) {
             rejectedFixes++
             return false
         }
         val dt = fixTime - (gpsTime ?: fixTime)
-        gpsAccel = if (dt in 0.2..3.0) ((speed - gpsSpeedMps!!) / dt).coerceIn(-8.0, 8.0) else 0.0
+        gpsAccel = if (dt in 0.2..3.0 && gpsSpeedMps != null) ((speed - gpsSpeedMps!!) / dt).coerceIn(-8.0, 8.0) else 0.0
         gpsSpeedMps = speed
         gpsTime = fixTime
         // Anchor at the reported fix time, extrapolating only its bounded age.
