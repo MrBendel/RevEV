@@ -9,7 +9,8 @@ inputs in its actual mounting position?
 Every engine start creates a separate JSON Lines (`.jsonl`) file in Android's
 private `files/session-logs` directory. Recording runs in all drive modes without
 pressing the lab's record button. Stop closes the file after engine coast-down;
-backgrounding, audio loss, and engine failures also close the session.
+audio loss and engine failures also close the session. Normal playback continues
+while the screen is off through an Android foreground service and partial wake lock.
 
 With the engine stopped, open **Session logs** below the debug dashboard, select
 a recording, and choose a destination in Android's file picker. Exported files
@@ -62,13 +63,66 @@ speed estimation and the drivetrain, but do **not** exercise Android's GPS radio
 gravity removal, or mounting-axis transforms. Use live recording for those.
 
 For rhythmic RPM changes, compare **Steady cruise** with **Motion ripple**.
-The second test deliberately separates steady GPS speed from alternating motion
+`integration_test/gps_smoothing_test.dart` additionally supplies 1 Hz speed fixes
+with matching IMU acceleration and 300 ms delayed fixes while accelerating and
+braking. It checks current speed accuracy and RPM direction outside shifts.
+
+Live GPS Drive advances on a 20 ms timer independently of sensor callbacks and
+UI polling. A two-state Kalman filter estimates speed and forward accelerometer
+bias. Mount/gravity correction and a forward acceleration filter run upstream.
+The filter uses a 30 ms time constant for inputs or filtered values of at least
+0.35 m/s², including release and sign reversals, and 120 ms near zero to suppress
+vibration. IMU integration drives speed changes between GPS fixes.
+GPS corrects accumulated error using Android speed accuracy when supplied
+(default speed standard deviation: 0.5 m/s; position accuracy is only a gate).
+A three-second integral history aligns delayed GPS observations to their fix
+timestamps. Covariance includes a conservative delay-noise allowance; this is
+an approximate delayed-observation filter, not a full navigation INS.
+
+A 250 ms exponential correction removes GPS correction jumps from presented
+speed. With fresh IMU data, GPS sync is capped at 0.35 m/s per second and cannot
+oppose acceleration or braking of at least 0.35 m/s². GPS initializes absolute
+speed; it remains the fallback when the IMU is stale. Bias learning is capped at
+0.03 m/s² per second so a noisy fix cannot abruptly rewrite measured acceleration.
+Corrected IMU acceleration drives load
+and shift demand; fresh GPS acceleration is a fallback if IMU data is missing.
+IMU samples expire after 500 ms; prediction stops five seconds after the latest
+GPS fix. Long scheduling gaps are not integrated. Outage recovery reacquires
+speed without learning a false accelerometer bias from unobserved movement.
+Diagnostics include corrected acceleration, estimated bias and speed variance.
+
+`integration_test/stop_go_test.dart` exercises the production forward filter,
+estimator and native engine through three 2-second launches, 2-second braking
+phases and 0.5-second stops. GPS arrives at 1 Hz, 600 ms late. It records braking
+RPM and launch speed response times, stop speed, direction errors and underruns.
+These timings measure native state, not acoustic output or Bluetooth latency.
+Kotlin regressions additionally check noisy GPS opposing braking/launch, bounded
+GPS sync, vibration rejection and bias convergence. A known audio underrun
+failure is tracked separately; audio queue sizes are unchanged in this change.
+
+Experimental stop-and-go validation (2026-10-10): 21 Kotlin tests, 51 Flutter
+tests, static analysis, and the native transmission/RPM tests pass. New noisy-GPS
+braking/launch tests and low-speed clutch-release tests failed before their fixes.
+The final emulator trace reached zero at each stop, with no braking RPM rises;
+launch speed response was 170–173 ms and braking RPM response was 172–225 ms
+from actual input dispatch. The full integration test **failed**: its maximum
+input gap was 161 ms (150 ms budget), one braking response exceeded 200 ms,
+and 38 underruns over 14.54 seconds exceeded the 2/s budget. Earlier runs also
+showed severe scheduling gaps, so these results are not a reliable acoustic
+latency guarantee. The existing GPS ramp regression maintained 0.0231 m/s maximum
+sampled speed error and no reversed RPM intervals, but failed its sample-count
+requirement with 65 intervals and recorded 834 underruns. Audio performance
+remains open; the internal build is for evaluating the IMU/launch changes.
+
+The Motion ripple scenario deliberately separates steady GPS speed from alternating motion
 input, as a stress test rather than a recording of a particular bike or mount.
 The report lets you distinguish a changing requested RPM, repeated gear changes,
 and an engine that overshoots a steady requested RPM.
 
 The transmission smooths acceleration demand and requires sustained kickdown
-input, with at least 0.8 seconds between shifts. In Drive, RPM is computed as
+input for gear selection, with at least 0.8 seconds between shifts. Low-speed
+launch clutch slip uses current filtered acceleration rather than the gear
+selector's 350 ms demand history, so braking releases slip promptly. In Drive, RPM is computed as
 `speedMps * 60 * gearRatio * finalDrive / (2 * pi * tireRadius)`, with an idle
 floor, redline ceiling and acceleration-dependent clutch slip below 12 km/h.
 At rest, sensor noise cannot raise the idle target. Gear selection and transition
@@ -105,8 +159,9 @@ Android path with steady speed and acceleration ripple.
    0–60 road run.
 5. After parking, finish the recording and copy the report. The graph and report
    survive Stop or a background interruption within the current app session.
-   Backgrounding still stops audio and ends the recording; background service
-   and Android Auto lifecycle work is separate from this harness.
+   Backgrounding during a lab recording still stops audio and ends that recording.
+   Normal playback outside the lab continues when locked, with a notification Stop
+   control. GPS Drive keeps its native motion updates active.
 
 No location coordinates are captured in the report. It stays in memory until
 copied; it is not automatically uploaded or saved across app restarts.
@@ -150,3 +205,20 @@ profiles, bounded reports, native packet dispatch and interruption paths. The
 device integration test runs launch and GPS-gap scenarios against the native
 engine and checks RPM, shifts and stopping. Emulator performance and synthetic
 inputs cannot validate the physical phone mount or in-car audio route.
+
+## Background playback validation (2026-10-09)
+
+`background_audio_test.dart` exercises actual screen lock and three fresh audio
+sessions. Screen lock and stable RPM checks passed. The audio-quality check remains
+failing: sessions recorded 14, 107, and 0 underruns over approximately 40, 20, and
+20 seconds respectively. Median synthesis CPU times were 6.85, 8.50, and 8.11 ms
+per 10 ms block. This does not establish that extended-use distortion is fixed.
+Motion diagnostics now include `workCpuMs` alongside wall-clock `workMs`, and
+`backgroundPlaybackActive`. Each worker requests Android audio thread priority.
+
+`background_gps_service_test.dart` checks fresh sensor updates while locked and
+external MediaSession Stop without relying on a Flutter method-call listener.
+Host automation grants location at GPS_PERMISSION_READY, locks at GPS_LOCK_READY,
+then dispatches `adb shell cmd media_session dispatch stop` at MEDIA_STOP_READY.
+
+The GPS service recheck passed: all 50 samples stayed fresh through screen lock, and external media Stop released playback and the wake lock.

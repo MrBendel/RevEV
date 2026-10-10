@@ -88,12 +88,33 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     private var lastSensorTimestampNs = 0L
 
     // Low-pass smoothing filter on forward and lateral acceleration to prevent road vibration jitter
-    private var smoothedAccel = 0.0f
+    private val forwardFilter = ForwardAccelerationFilter()
     private var smoothedLateral = 0.0f
 
     // Dead-reckoning velocity integration for instant responsiveness before/between GPS fixes
     private val motion = DriveMotionEstimator()
+    private val motionHandler by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+    private val motionTick = object : Runnable {
+        override fun run() {
+            if (!sensorsActive || !playing || currentDriveMode != 1) return
+            motion.step(nowSeconds())
+            publishMotion()
+            motionHandler.postDelayed(this, 20)
+        }
+    }
+    // Cleanup must not depend on Flutter polling while its view is suspended.
+    private val playbackTick = object : Runnable {
+        override fun run() {
+            if (!playing) return
+            val stats = nativeStats()
+            if (stats[3] != 0.0 || stats[4] != 0.0) {
+                stop()
+                if (stats[3] != 0.0) EngineBridge.updateState { it.copy(failed = true) }
+            } else motionHandler.postDelayed(this, 500)
+        }
+    }
     private val replayMotion = DriveMotionEstimator()
+    private val replayForwardFilter = ForwardAccelerationFilter()
     private var replayActive = false
     private var replayTime = 0.0
     private var effectiveMount = "unknown"
@@ -229,7 +250,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     private fun resetSensorFilters() {
         gravityInitialized = false
         lastSensorTimestampNs = 0L
-        smoothedAccel = 0.0f
+        forwardFilter.reset()
         smoothedLateral = 0.0f
     }
 
@@ -238,6 +259,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         sensorsActive = true
         resetSensorFilters()
         resetMotion()
+        motionHandler.post(motionTick)
 
         accelSensor?.let {
             sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
@@ -275,6 +297,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         if (!hasLocationPermission()) return
         val mgr = locationManager ?: return
         try {
+            if (playing) EnginePlaybackService.start(context, true)
             val providers = mgr.allProviders ?: listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
             for (provider in providers) {
                 if (provider == LocationManager.PASSIVE_PROVIDER) {
@@ -307,6 +330,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     }
 
     private fun stopSensors() {
+        motionHandler.removeCallbacks(motionTick)
         if (!sensorsActive) return
         sensorsActive = false
         sensorManager?.unregisterListener(this)
@@ -415,19 +439,17 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         }
 
         // Deadzone micro-vibrations (< 0.08 m/s^2)
-        val deadbandForward = if (kotlin.math.abs(rawForward) < 0.08f) 0.0f else rawForward
         val deadbandLateral = if (rawLateral < 0.08f) 0.0f else rawLateral
 
         // Low-pass smoothing on forward and lateral acceleration to prevent chassis vibration jitter
         val smoothAlpha = dt / (0.12f + dt)
-        smoothedAccel += (deadbandForward - smoothedAccel) * smoothAlpha
         smoothedLateral += (deadbandLateral - smoothedLateral) * smoothAlpha
 
-        currentAccelMps2 = smoothedAccel
+        currentAccelMps2 = forwardFilter.update(rawForward.toDouble(), dt.toDouble()).toFloat()
         currentLateralAccelMps2 = smoothedLateral
 
         // Integrate on every IMU sample, including between fresh GPS fixes.
-        motion.step(event.timestamp * 1e-9, currentAccelMps2.toDouble())
+        motion.step(nowSeconds(), currentAccelMps2.toDouble())
         publishMotion()
     }
 
@@ -442,7 +464,9 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         val speed = if (location.hasSpeed()) location.speed.toDouble() else Double.NaN
         val accuracy = if (location.hasAccuracy()) location.accuracy.toDouble() else Double.NaN
         motion.step(now)
-        if (motion.gps(now, fixTime, speed, accuracy)) {
+        val speedAccuracy = if (android.os.Build.VERSION.SDK_INT >= 26 && location.hasSpeedAccuracy())
+            location.speedAccuracyMetersPerSecond.toDouble() else null
+        if (motion.gps(now, fixTime, speed, accuracy, speedAccuracy)) {
             lastLocation = location
             gpsAccuracyM = location.accuracy
             locationError = null
@@ -454,6 +478,8 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
 
     private fun stop() {
+        motionHandler.removeCallbacks(playbackTick)
+        EnginePlaybackService.stop(context)
         stopSensors()
         nativeStop()
         focusPolicy.end()
@@ -516,6 +542,14 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                     if (playing) {
                         val chosenPreset = call.argument<String>("preset") ?: "porsche/911_carrera_32"
                         EngineBridge.updateState { it.copy(playing = true, stopping = false, failed = false, presetId = chosenPreset) }
+                        try {
+                            EnginePlaybackService.start(context, currentDriveMode == 1 && hasLocationPermission())
+                        } catch (e: Exception) {
+                            stop()
+                            result.error("background_audio", "Could not start playback service: ${e.message}", null)
+                            return
+                        }
+                        motionHandler.post(playbackTick)
                         if (currentDriveMode == 1) {
                             startSensors()
                         }
@@ -571,17 +605,30 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                     if (!sensorsActive) startSensors()
                 } else if (sensorsActive) {
                     stopSensors()
+                    if (playing) EnginePlaybackService.start(context, false)
                 }
 
                 val sample = call.argument<Map<String, Any?>>("testSample")
                 if (sample != null && currentDriveMode == 2 && playing) {
                     val time = (sample["timeSeconds"] as? Number)?.toDouble() ?: 0.0
-                    if (sample["reset"] == true) replayMotion.reset()
+                    if (sample["reset"] == true) {
+                        replayMotion.reset()
+                        replayForwardFilter.reset()
+                        replayTime = time
+                    }
                     replayActive = true
+                    // Optional pre-filter replay exercises the production
+                    // forward filter as well as fusion; existing lab samples
+                    // remain post-filter inputs for backwards compatibility.
+                    val inputAccel = (sample["rawForwardAccelMps2"] as? Number)?.let {
+                        val inputDt = if (sample["reset"] == true) .02 else time-replayTime
+                        replayForwardFilter.update(it.toDouble(), inputDt)
+                    } ?: (sample["accelMps2"] as? Number)?.toDouble()
                     replayTime = time
-                    replayMotion.step(time, (sample["accelMps2"] as? Number)?.toDouble())
+                    replayMotion.step(time, inputAccel)
                     (sample["gpsSpeedMps"] as? Number)?.let {
-                        replayMotion.gps(time, time, it.toDouble(), 5.0)
+                        val fixTime = (sample["gpsTimeSeconds"] as? Number)?.toDouble() ?: time
+                        replayMotion.gps(time, fixTime, it.toDouble(), 5.0)
                     }
                     currentSpeedMps = replayMotion.speedMps.toFloat()
                     currentAccelMps2 = replayMotion.acceleration(time).toFloat()
@@ -643,6 +690,8 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                         "targetRpm" to if (s.size > 11) s[11] else null,
                         "engineThrottle" to if (s.size > 12) s[12] else null,
                         "audioFocusGain" to if (s.size > 13) s[13] else null,
+                        "backgroundPlaybackActive" to EnginePlaybackService.active,
+                        "workCpuMs" to if (s.size > 14) s[14] else null,
                         "replay" to replayActive,
                         "sensorsActive" to sensorsActive,
                         "accelerometerAvailable" to (accelSensor != null),
@@ -702,9 +751,13 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     }
 
     override fun onStopEngine() {
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
+        val action = Runnable {
+            // Notification/media controls must work even when Dart is suspended.
+            stop()
             channel.invokeMethod("onRemoteStop", null)
         }
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) action.run()
+        else motionHandler.post(action)
     }
 
     override fun onSetPreset(presetId: String) {

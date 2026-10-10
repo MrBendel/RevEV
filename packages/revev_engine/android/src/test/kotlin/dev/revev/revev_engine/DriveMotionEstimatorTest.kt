@@ -4,72 +4,224 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.math.abs
 
 class DriveMotionEstimatorTest {
-    @Test fun stationaryBiasCannotInventSpeedButLaunchIsImmediate() {
-        val estimator = DriveMotionEstimator()
-        estimator.step(0.0, 0.2)
-        estimator.gps(0.0, 0.0, 0.0, 5.0)
-        for (i in 1..40) estimator.step(i * 0.02, 0.2)
-        assertEquals(0.0, estimator.speedMps)
-        for (i in 41..50) estimator.step(i * 0.02, 1.5)
-        assertEquals(0.3, estimator.speedMps, 0.001)
-    }
-    @Test fun accelerationFillsBetweenFreshGpsFixesAndBrakingReducesSpeed() {
-        val estimator = DriveMotionEstimator()
-        estimator.step(0.0, 2.0)
-        assertTrue(estimator.gps(0.0, 0.0, 10.0, 5.0))
-        for (i in 1..5) estimator.step(i * 0.1, 2.0)
-        assertEquals(11.0, estimator.speedMps, 0.001)
-        for (i in 6..10) estimator.step(i * 0.1, -2.0)
-        assertEquals(10.0, estimator.speedMps, 0.001)
+    @Test fun delayedHighGpsCannotUndoActiveBraking() {
+        val e = DriveMotionEstimator()
+        e.gps(0.0, 0.0, 4.0, 5.0)
+        e.step(0.0, -2.0)
+        for (i in 1..40) {
+            val t = i*.02
+            // A speed-bearing fix with an ordinary 1.2 m/s error, captured
+            // earlier in the braking manoeuvre and delivered 300 ms late.
+            if (i == 20) e.gps(t, t-.3, 5.0, 5.0, .5)
+            val before = e.speedMps
+            e.step(t, -2.0)
+            if (i > 20) assertTrue(e.speedMps <= before-.035,
+                "GPS must not counter braking at $t: $before -> ${e.speedMps}")
+        }
+        assertEquals(2.4, e.speedMps, .08)
     }
 
-    @Test fun rejectsStaleInaccurateMissingAndOutOfOrderSpeeds() {
-        val estimator = DriveMotionEstimator()
-        assertTrue(estimator.gps(10.0, 10.0, 8.0, 5.0))
-        assertFalse(estimator.gps(10.1, 9.0, 30.0, 5.0))
-        assertFalse(estimator.gps(14.0, 10.5, 30.0, 5.0))
-        assertFalse(estimator.gps(14.0, 14.0, 30.0, 100.0))
-        assertFalse(estimator.gps(14.0, 14.0, Double.NaN, 5.0))
-        assertEquals(8.0, estimator.speedMps)
-        assertEquals(4, estimator.rejectedFixes)
+    @Test fun delayedLowGpsCannotHoldBackRelaunch() {
+        val e = DriveMotionEstimator()
+        e.gps(0.0, 0.0, 0.0, 5.0)
+        e.step(0.0, 2.0)
+        for (i in 1..40) {
+            val t = i*.02
+            if (i == 20) e.gps(t, t-.3, 0.0, 5.0, .5)
+            e.step(t, 2.0)
+        }
+        assertEquals(1.6, e.speedMps, .05)
     }
 
-    @Test fun outageStopsIntegratingAfterFiveSecondsAndRecovers() {
-        val estimator = DriveMotionEstimator()
-        estimator.step(0.0, 1.0)
-        estimator.gps(0.0, 0.0, 10.0, 5.0)
-        for (i in 1..100) estimator.step(i * 0.1, 1.0)
-        assertEquals(15.0, estimator.speedMps, 0.01)
-        assertEquals("GPS stale · speed held", estimator.diagnostics(10.0)["source"])
-        assertTrue(estimator.gps(10.0, 10.0, 19.0, 5.0))
-        assertEquals(19.0, estimator.speedMps)
-        estimator.reset()
-        assertEquals(0.0, estimator.speedMps)
-        assertEquals(null, estimator.gpsTime)
-        assertEquals(null, estimator.sensorTime)
+    @Test fun gpsOnlyCorrectsDriftGentlyWithFreshImu() {
+        val e=DriveMotionEstimator()
+        e.gps(0.0,0.0,10.0,5.0)
+        e.step(0.0,0.0)
+        e.gps(.2,.2,12.0,5.0,.2)
+        for(i in 11..40) {
+            val before=e.speedMps
+            e.step(i*.02,0.0)
+            val imuDelta = -e.accelBias*.02
+            assertTrue(e.speedMps-before-imuDelta <= .007001)
+        }
     }
 
-    @Test fun gpsAccelerationIsFallbackWithoutDoublingImuDemand() {
-        val estimator = DriveMotionEstimator()
-        estimator.gps(0.0, 0.0, 0.0, 5.0)
-        estimator.gps(1.0, 1.0, 2.0, 5.0)
-        assertEquals(2.0, estimator.acceleration(1.0))
-        estimator.step(1.0, 1.5)
-        assertEquals(1.5, estimator.acceleration(1.1))
-        assertEquals(2.0, estimator.acceleration(1.6))
-        assertEquals(0.0, estimator.acceleration(4.0))
+    @Test fun largerBiasStillLearnsWithoutSuddenAccelerationChanges() {
+        val e=DriveMotionEstimator()
+        e.step(0.0,.45)
+        e.gps(0.0,0.0,10.0,5.0)
+        for(i in 1..3000) {
+            val t=i*.02
+            e.step(t,.45)
+            if(i%50==0) {
+                val before=e.accelBias
+                e.gps(t,t-.3,10.0,5.0,.2)
+                assertTrue(abs(e.accelBias-before) <= .030001)
+            }
+        }
+        assertEquals(.45,e.accelBias,.03)
+        assertEquals(10.0,e.speedMps,.08)
     }
 
-    @Test fun noGpsLaunchIsBoundedAndSpeedCannotGoNegative() {
-        val estimator = DriveMotionEstimator()
-        estimator.step(0.0, 2.0)
-        for (i in 1..100) estimator.step(i * 0.1, 2.0)
-        assertEquals(10.0, estimator.speedMps, 0.01)
-        estimator.reset()
-        estimator.step(0.0, -3.0)
-        estimator.step(0.1, -3.0)
-        assertEquals(0.0, estimator.speedMps)
+    @Test fun respondsBeforeNextGpsAndBrakesMonotonically() {
+        val e = DriveMotionEstimator()
+        e.gps(0.0, 0.0, 10.0, 5.0)
+        e.step(0.0, 2.0)
+        for (i in 1..40) e.step(i*.02, 2.0)
+        assertEquals(11.6, e.speedMps, .001)
+        assertEquals(2.0, e.acceleration(.8), .001)
+        e.step(.8, -2.0)
+        for (i in 41..80) {
+            val before = e.speedMps
+            e.step(i*.02, -2.0)
+            assertTrue(e.speedMps < before)
+        }
+        assertEquals(10.0, e.speedMps, .001)
+    }
+
+    @Test fun delayedOneHertzGpsDoesNotIntroduceOneSecondLag() {
+        val e = DriveMotionEstimator()
+        e.step(0.0, 1.0)
+        e.gps(0.0, 0.0, 10.0, 5.0)
+        for (i in 1..1000) {
+            val t = i*.02
+            e.step(t, 1.0)
+            if (i%50==0) {
+                val before = e.speedMps
+                assertTrue(e.gps(t, t-.3, 10+t-.3, 5.0, .2))
+                assertEquals(before, e.speedMps, 1e-8)
+            }
+            assertEquals(10+t, e.speedMps, .03)
+        }
+    }
+
+    @Test fun variableGpsDelayDoesNotCreateSpeedCorrectionsDuringConstantAcceleration() {
+        val e=DriveMotionEstimator()
+        e.step(0.0,.7); e.gps(0.0,0.0,10.0,5.0)
+        for(i in 1..1000) {
+            val t=i*.02
+            e.step(t,.7)
+            if(i%50==0) {
+                val delay=if(i%100==0) .6 else .15
+                assertTrue(e.gps(t,t-delay,10+.7*(t-delay),5.0,.2))
+            }
+            assertEquals(10+.7*t,e.speedMps,.01)
+        }
+    }
+
+    @Test fun learnsBiasWithoutInventingLongTermAcceleration() {
+        val e = DriveMotionEstimator()
+        e.step(0.0, .2)
+        e.gps(0.0, 0.0, 10.0, 5.0)
+        for (i in 1..3000) {
+            val t=i*.02
+            e.step(t, .2)
+            if (i%50==0) e.gps(t, t-.3, 10.0, 5.0, .2)
+        }
+        assertEquals(.2, e.accelBias, .03)
+        assertEquals(10.0, e.speedMps, .05)
+        assertEquals(0.0, e.acceleration(60.0), .05)
+    }
+
+    @Test fun gpsCorrectionIsContinuousAndConverges() {
+        val e=DriveMotionEstimator()
+        e.gps(0.0, 0.0, 10.0, 5.0)
+        for (i in 1..500) {
+            val t=i*.02
+            e.step(t)
+            if (i%50==0) {
+                val before=e.speedMps
+                assertTrue(e.gps(t,t,12.0,5.0))
+                assertEquals(before,e.speedMps)
+            }
+        }
+        assertEquals(12.0,e.speedMps,.05)
+    }
+
+    @Test fun staleImuDoesNotIntegrateAcrossGapAndFreshSampleIsNotRetroactive() {
+        val e=DriveMotionEstimator()
+        e.gps(0.0,0.0,10.0,5.0)
+        e.step(0.0,2.0)
+        for (i in 1..100) e.step(i*.02)
+        assertTrue(e.speedMps in 10.9..11.01)
+        val before=e.speedMps
+        e.step(20.0,8.0)
+        assertEquals(before,e.speedMps)
+        assertEquals(0.0,e.acceleration(20.0))
+    }
+
+    @Test fun gpsOutageBoundsDeadReckoningAndRecovers() {
+        val e=DriveMotionEstimator()
+        e.gps(0.0,0.0,10.0,5.0)
+        e.step(0.0,1.0)
+        for (i in 1..500) e.step(i*.02,1.0)
+        assertEquals(15.0,e.speedMps,.03)
+        val before=e.speedMps
+        assertTrue(e.gps(10.0,10.0,16.0,5.0))
+        assertEquals(before,e.speedMps)
+        for (i in 501..600) e.step(i*.02,0.0)
+        assertTrue(e.speedMps in 15.0..16.2)
+    }
+
+    @Test fun zeroSpeedIsStableAndLaunchIsImmediate() {
+        val e=DriveMotionEstimator()
+        e.gps(0.0,0.0,0.0,5.0)
+        for (i in 1..250) {
+            val t=i*.02
+            e.step(t,if(i%2==0) .1 else -.1)
+            if(i%50==0) e.gps(t,t,0.0,5.0)
+            assertEquals(0.0,e.speedMps)
+        }
+        e.step(5.0,1.0)
+        for(i in 251..270) e.step(i*.02,1.0)
+        assertTrue(e.speedMps>.35)
+    }
+
+    @Test fun rejectsBadFixesAndOutliers() {
+        val e=DriveMotionEstimator()
+        e.gps(0.0,0.0,8.0,5.0)
+        assertFalse(e.gps(.1,0.0,8.0,5.0))
+        assertFalse(e.gps(4.0,.5,8.0,5.0))
+        assertFalse(e.gps(1.0,1.0,8.0,100.0))
+        assertFalse(e.gps(1.0,1.0,Double.NaN,5.0))
+        assertFalse(e.gps(1.0,1.0,80.0,5.0))
+        assertEquals(5,e.rejectedFixes)
+        assertEquals(8.0,e.speedMps)
+        e.reset()
+        assertEquals(0.0,e.speedMps)
+        assertEquals(0.0,e.accelBias)
+        assertEquals(null,e.gpsTime)
+    }
+
+    @Test fun brakingReachesZeroWithoutNegativeSpeed() {
+        val e=DriveMotionEstimator()
+        e.gps(0.0,0.0,3.0,5.0); e.step(0.0,-1.0)
+        for(i in 1..250) {
+            val t=i*.02
+            e.step(t,if(t<3) -1.0 else 0.0)
+            if(i%50==0) e.gps(t,t,(3-t).coerceAtLeast(0.0),5.0)
+            assertTrue(e.speedMps>=0.0)
+        }
+        assertEquals(0.0,e.speedMps,.01)
+    }
+
+    @Test fun lowConfidenceGpsHasLessInfluence() {
+        val good=DriveMotionEstimator(); val poor=DriveMotionEstimator()
+        for(e in listOf(good,poor)) e.gps(0.0,0.0,10.0,5.0)
+        good.gps(1.0,1.0,12.0,5.0,.2)
+        poor.gps(1.0,1.0,12.0,5.0,3.0)
+        for(i in 1..50) { good.step(1+i*.02); poor.step(1+i*.02) }
+        assertTrue(good.speedMps>poor.speedMps+1.0)
+    }
+
+    @Test fun timerFrequencyDoesNotChangeEstimate() {
+        val a=DriveMotionEstimator(); val b=DriveMotionEstimator()
+        for(e in listOf(a,b)) { e.gps(0.0,0.0,10.0,5.0); e.step(0.0,1.0) }
+        for(i in 1..100) a.step(i*.01,1.0)
+        for(i in 1..20) b.step(i*.05,1.0)
+        assertTrue(abs(a.speedMps-b.speedMps)<.001)
     }
 }

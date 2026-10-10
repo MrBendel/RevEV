@@ -32,6 +32,8 @@ jobs:
       - run: flutter test
       - name: Check DSP and audio mixer
         run: |
+          c++ -std=c++17 -O2 packages/revev_engine/native/loudness_compressor_test.cpp -o /tmp/revev-compressor-test
+          /tmp/revev-compressor-test
           c++ -std=c++17 -O2 packages/revev_engine/native/output_continuity_test.cpp -o /tmp/revev-continuity-test
           /tmp/revev-continuity-test
           c++ -std=c++17 -O2 packages/revev_engine/native/listening_mix_test.cpp -o /tmp/revev-listening-test

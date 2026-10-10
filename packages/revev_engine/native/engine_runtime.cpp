@@ -5,6 +5,7 @@
 #include "exhaust_response.h"
 #include "listening_mix.h"
 #include "output_limiter.h"
+#include "loudness_compressor.h"
 #include "turbo_model.h"
 #include "tire_squeal_model.h"
 #include "audio_mixer.h"
@@ -15,6 +16,12 @@
 #include <chrono>
 #include <cmath>
 #include <memory>
+#if defined(__ANDROID__)
+#include <pthread.h>
+#include <sys/resource.h>
+#include <android/log.h>
+#include <time.h>
+#endif
 
 namespace {
 class SessionSimulator : public PistonEngineSimulator {
@@ -30,7 +37,7 @@ void EngineRuntime::start(const std::string &root, const std::string &preset) {
     const auto entry = presetEntry(preset);
     if (running_.exchange(true)) return;
     assetRoot_ = root; presetEntry_ = entry; presetId_ = preset; isTurbo_ = presetIsTurbo(preset);
-    stopping_ = false; done_ = false; workMs_ = 0; gear_ = 0;
+    stopping_ = false; done_ = false; workMs_ = 0; workCpuMs_ = 0; gear_ = 0;
     read_ = 0; write_ = 0; underruns_ = 0; rpm_ = 0; boost_ = 0; failed_ = false; gain_ = 0;
     worker_ = std::thread(&EngineRuntime::run, this);
 }
@@ -73,6 +80,14 @@ void EngineRuntime::render(float *out, int frames) {
     if (!done_ && count < static_cast<uint32_t>(frames)) ++underruns_;
 }
 void EngineRuntime::run() {
+#if defined(__ANDROID__)
+    pthread_setname_np(pthread_self(), "RevEV-synth");
+    // The producer has the same 10 ms deadline as audio, even when the Activity
+    // is no longer top-most. Set each new worker's priority explicitly on restart.
+    if (setpriority(PRIO_PROCESS, 0, -16) != 0) {
+        __android_log_print(ANDROID_LOG_WARN, "RevEV", "Could not set synthesis audio priority");
+    }
+#endif
     using clock = std::chrono::steady_clock;
     try {
         ScriptPreset preset(assetRoot_, presetEntry_);
@@ -113,6 +128,7 @@ void EngineRuntime::run() {
         std::array<float, 441> pcm{};
         ListeningMix listeningMix;
         OutputLimiter limiter;
+        LoudnessCompressor compressor;
         TurboModel turboModel;
         turboModel.setEnabled(isTurbo_);
         TireSquealModel tireSquealModel;
@@ -139,6 +155,10 @@ void EngineRuntime::run() {
                 continue;
             }
             const auto t = clock::now();
+#if defined(__ANDROID__)
+            timespec cpuStart{};
+            clock_gettime(CLOCK_THREAD_CPUTIME_ID, &cpuStart);
+#endif
             const bool shuttingDown = stopping_.load();
             if (shuttingDown && shutdownStarted == clock::time_point{}) shutdownStarted = t;
             if (elapsed > 0.5 && preset.engine->getRpm() > 600) started = true;
@@ -213,10 +233,16 @@ void EngineRuntime::run() {
                 const float squealSound = tireSquealModel.processSample();
                 const float mixed = AudioMixer::mix(pcm[i] * 0.75f, turboSound, squealSound);
                 const float shaped = listeningMix.process(mixed, mode, strength, filteredThrottle);
-                buffer_[(w + i) % capacity] = limiter.process(shaped) * fade;
+                buffer_[(w + i) % capacity] = limiter.process(compressor.process(shaped)) * fade;
             }
             write_.store(w + pcm.size(), std::memory_order_release);
             workMs_ = std::chrono::duration<float, std::milli>(clock::now() - t).count();
+#if defined(__ANDROID__)
+            timespec cpuEnd{};
+            clock_gettime(CLOCK_THREAD_CPUTIME_ID, &cpuEnd);
+            workCpuMs_ = (cpuEnd.tv_sec-cpuStart.tv_sec)*1000.0f +
+                (cpuEnd.tv_nsec-cpuStart.tv_nsec)*1e-6f;
+#endif
             elapsed += 0.01;
             if (fading) {
                 fadeElapsed += 0.01;

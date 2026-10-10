@@ -120,7 +120,7 @@ void main() {
       await tester.tap(find.text('GPS DRIVE'));
       await tester.pump();
 
-      expect(find.text('Automatic transmission driven by phone GPS speed & accelerometer g-force.'), findsOneWidget);
+      expect(find.text('Engine follows phone motion, with GPS keeping speed calibrated.'), findsOneWidget);
       expect(find.byKey(const Key('tire-squeal-sensitivity')), findsOneWidget);
       expect(calls.lastWhere((c) => c.method == 'driveTelemetry').arguments['driveMode'], DriveMode.gpsDrive.index);
 

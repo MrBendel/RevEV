@@ -36,6 +36,20 @@ int main() {
     require(tx.gear() == 1, "Must remain in 1st gear at standstill with manual throttle");
     require(std::abs(tx.simulatedThrottle() - 0.65f) < 0.01f, "Standstill manual throttle not respected");
 
+    // GPS Drive load follows acceleration independently of RPM at a fixed gear.
+    TransmissionModel load;
+    const double singleRatio[] = {2.06};
+    load.configure(1, singleRatio, 3.44, 8000.0, 900.0, 0.31);
+    for (int i = 0; i < 100; ++i) load.update(.01f, 10.0f, 0.0f, .5f, 0.0f, 1);
+    const float cruiseLoad = load.simulatedThrottle();
+    const float cruiseRpm = load.targetRpm();
+    load.update(.01f, 10.0f, 1.0f, .5f, 0.0f, 1);
+    require(load.simulatedThrottle() > cruiseLoad, "Acceleration must increase GPS Drive load immediately");
+    require(std::abs(load.targetRpm()-cruiseRpm)<.01f, "Load must not change fixed-gear RPM");
+    load.update(.01f, 10.0f, -1.0f, .5f, 0.0f, 1);
+    require(load.simulatedThrottle() < cruiseLoad, "Braking must reduce GPS Drive load immediately");
+    require(std::abs(load.targetRpm()-cruiseRpm)<.01f, "Braking load must not change fixed-gear RPM");
+
     // 3. Hard acceleration pull (flooring it: 2.8 m/s^2, 1.0 aggressiveness):
     // Should wind up 1st gear all the way near redline before shifting
     float speed = 0.0f;
@@ -135,6 +149,22 @@ int main() {
     tx.update(.01f, 0.0f, 0.0f, .6f, 0.0f, 0);
     tx.update(.01f, 6.7056f, 0.0f, .6f, 0.0f, 1);
     require(tx.gear() >= 1 && std::isfinite(tx.targetRpm()), "manual-to-drive transition must be valid");
+
+    // Low-speed clutch slip must not retain the gear selector's 350 ms demand
+    // history after braking, or delay a fresh launch behind that same filter.
+    TransmissionModel launch, coast;
+    launch.configure(5, carreraRatios, 3.44, 6500.0, 900.0, 0.31);
+    coast.configure(5, carreraRatios, 3.44, 6500.0, 900.0, 0.31);
+    for (int i=0; i<200; ++i) launch.update(.01f, 1.5f, 2.0f, .5f, 0, 1);
+    coast.update(.01f, 1.5f, -2.0f, .5f, 0, 1);
+    const float launchRpm = launch.targetRpm();
+    require(launchRpm > coast.targetRpm()+100, "launch demand must affect low-speed clutch slip");
+    launch.update(.01f, 1.5f, -2.0f, .5f, 0, 1);
+    require(std::abs(launch.targetRpm()-coast.targetRpm()) < .01f,
+        "braking must release launch slip immediately, independent of shift demand history");
+    launch.update(.01f, 1.5f, 2.0f, .5f, 0, 1);
+    require(std::abs(launch.targetRpm()-launchRpm) < .01f,
+        "relaunch must not wait for gear selection smoothing");
 
     std::printf("All TransmissionModel tests passed successfully!\n");
     return 0;
