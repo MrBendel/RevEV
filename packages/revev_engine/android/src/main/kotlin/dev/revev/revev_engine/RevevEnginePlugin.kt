@@ -113,9 +113,9 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         currentLateralAccelMps2 = 0.0f
     }
 
-    private fun publishMotion() {
+    private fun publishMotion(now: Double = nowSeconds()) {
         currentSpeedMps = motion.speedMps.toFloat()
-        currentAccelMps2 = motion.acceleration(nowSeconds()).toFloat()
+        currentAccelMps2 = motion.acceleration(now).toFloat()
         nativeDriveTelemetry(currentSpeedMps, currentAccelMps2, currentAggressiveness,
             currentDriveMode, currentLateralAccelMps2, currentTireSquealSensitivity)
         EngineBridge.updateState { it.copy(vehicleSpeedMps = currentSpeedMps.toDouble(), accelMps2 = currentAccelMps2.toDouble()) }
@@ -426,9 +426,10 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         currentAccelMps2 = smoothedAccel
         currentLateralAccelMps2 = smoothedLateral
 
+        val timestampSec = event.timestamp * 1e-9
         // Integrate on every IMU sample, including between fresh GPS fixes.
         motion.step(event.timestamp * 1e-9, currentAccelMps2.toDouble())
-        publishMotion()
+        publishMotion(timestampSec)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -437,17 +438,33 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         if (currentDriveMode != 1 || !playing || !sensorsActive) return
         val now = nowSeconds()
         val fixTime = location.elapsedRealtimeNanos * 1e-9
-        // Position-only network fixes are not reliable speed observations. Do not
-        // derive a large speed from a GPS/network position jump.
-        val speed = if (location.hasSpeed()) location.speed.toDouble() else Double.NaN
-        val accuracy = if (location.hasAccuracy()) location.accuracy.toDouble() else Double.NaN
+        val prev = lastLocation
+
+        var speed = if (location.hasSpeed() && location.speed >= 0.0f) location.speed.toDouble() else Double.NaN
+        // Fall back to displacement velocity if hasSpeed is missing
+        if (!speed.isFinite() && prev != null) {
+            val dt = (location.elapsedRealtimeNanos - prev.elapsedRealtimeNanos) * 1e-9
+            if (dt in 0.1..5.0) {
+                val dist = location.distanceTo(prev)
+                val derived = dist / dt
+                if (derived in 0.0..100.0) {
+                    speed = derived
+                }
+            }
+        }
+        val accuracy = if (location.hasAccuracy()) location.accuracy.toDouble() else 15.0
+        // Standstill guard: if speed is still NaN and accuracy is good, speed is 0
+        if (!speed.isFinite() && accuracy <= 25.0) {
+            speed = 0.0
+        }
+
         motion.step(now)
         if (motion.gps(now, fixTime, speed, accuracy)) {
             lastLocation = location
             gpsAccuracyM = location.accuracy
             locationError = null
+            publishMotion(now)
         }
-        publishMotion()
     }
 
     @Deprecated("Deprecated in Java")
