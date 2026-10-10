@@ -1397,7 +1397,7 @@ class _EngineLabState extends State<EngineLab> with WidgetsBindingObserver {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'Automatic transmission driven by phone GPS speed & accelerometer g-force.',
+                            'Engine follows phone motion, with GPS keeping speed calibrated.',
                             style: const TextStyle(
                               fontSize: 10,
                               color: leatherMuted,

@@ -88,7 +88,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     private var lastSensorTimestampNs = 0L
 
     // Low-pass smoothing filter on forward and lateral acceleration to prevent road vibration jitter
-    private var smoothedAccel = 0.0f
+    private val forwardFilter = ForwardAccelerationFilter()
     private var smoothedLateral = 0.0f
 
     // Dead-reckoning velocity integration for instant responsiveness before/between GPS fixes
@@ -114,6 +114,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         }
     }
     private val replayMotion = DriveMotionEstimator()
+    private val replayForwardFilter = ForwardAccelerationFilter()
     private var replayActive = false
     private var replayTime = 0.0
     private var effectiveMount = "unknown"
@@ -249,7 +250,7 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     private fun resetSensorFilters() {
         gravityInitialized = false
         lastSensorTimestampNs = 0L
-        smoothedAccel = 0.0f
+        forwardFilter.reset()
         smoothedLateral = 0.0f
     }
 
@@ -438,15 +439,13 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         }
 
         // Deadzone micro-vibrations (< 0.08 m/s^2)
-        val deadbandForward = if (kotlin.math.abs(rawForward) < 0.08f) 0.0f else rawForward
         val deadbandLateral = if (rawLateral < 0.08f) 0.0f else rawLateral
 
         // Low-pass smoothing on forward and lateral acceleration to prevent chassis vibration jitter
         val smoothAlpha = dt / (0.12f + dt)
-        smoothedAccel += (deadbandForward - smoothedAccel) * smoothAlpha
         smoothedLateral += (deadbandLateral - smoothedLateral) * smoothAlpha
 
-        currentAccelMps2 = smoothedAccel
+        currentAccelMps2 = forwardFilter.update(rawForward.toDouble(), dt.toDouble()).toFloat()
         currentLateralAccelMps2 = smoothedLateral
 
         // Integrate on every IMU sample, including between fresh GPS fixes.
@@ -612,10 +611,21 @@ class RevevEnginePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                 val sample = call.argument<Map<String, Any?>>("testSample")
                 if (sample != null && currentDriveMode == 2 && playing) {
                     val time = (sample["timeSeconds"] as? Number)?.toDouble() ?: 0.0
-                    if (sample["reset"] == true) replayMotion.reset()
+                    if (sample["reset"] == true) {
+                        replayMotion.reset()
+                        replayForwardFilter.reset()
+                        replayTime = time
+                    }
                     replayActive = true
+                    // Optional pre-filter replay exercises the production
+                    // forward filter as well as fusion; existing lab samples
+                    // remain post-filter inputs for backwards compatibility.
+                    val inputAccel = (sample["rawForwardAccelMps2"] as? Number)?.let {
+                        val inputDt = if (sample["reset"] == true) .02 else time-replayTime
+                        replayForwardFilter.update(it.toDouble(), inputDt)
+                    } ?: (sample["accelMps2"] as? Number)?.toDouble()
                     replayTime = time
-                    replayMotion.step(time, (sample["accelMps2"] as? Number)?.toDouble())
+                    replayMotion.step(time, inputAccel)
                     (sample["gpsSpeedMps"] as? Number)?.let {
                         val fixTime = (sample["gpsTimeSeconds"] as? Number)?.toDouble() ?: time
                         replayMotion.gps(time, fixTime, it.toDouble(), 5.0)

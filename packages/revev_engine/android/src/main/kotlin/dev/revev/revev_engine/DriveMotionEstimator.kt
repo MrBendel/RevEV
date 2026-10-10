@@ -6,7 +6,7 @@ import kotlin.math.exp
 /** Two-state (speed, forward accelerometer bias) Kalman estimator.
  * Input acceleration is already gravity/mount corrected and low-pass filtered.
  * GPS observes historical speed using a short integral history; corrections are
- * blended into presentation without delaying the IMU response.
+ * used as a bounded drift correction. Fresh IMU motion owns the fast response.
  */
 class DriveMotionEstimator {
     var speedMps = 0.0; private set
@@ -71,7 +71,15 @@ class DriveMotionEstimator {
             pBB = (pBB + .0004*dt).coerceAtMost(4.0)
             delta += raw*dt; active += biasDt
             speedMps = (speedMps + a*dt).coerceIn(0.0, 100.0)
-            speedMps += (velocity-speedMps)*(1-exp(-dt/.25))
+            var correction = (velocity-speedMps)*(1-exp(-dt/.25))
+            if (fresh) {
+                // GPS is an absolute reference, not a competing accelerator.
+                // Limit drift sync to 0.35 m/s per second and never let it undo
+                // a clear current manoeuvre. With no IMU, retain GPS recovery.
+                correction = correction.coerceIn(-.35*dt, .35*dt)
+                if (abs(a) >= .35 && correction*a < 0.0) correction = 0.0
+            }
+            speedMps = (speedMps + correction).coerceIn(0.0, 100.0)
             // GPS-confirmed standstill tolerates small residual sensor offsets.
             if (gpsSpeedMps != null && gpsSpeedMps!! < .2 && t-gpsTime!! < 1.5 &&
                 abs(a) < .25 && speedMps < .3) {
@@ -139,10 +147,21 @@ class DriveMotionEstimator {
             val cV = pVV+h*pVB
             val cB = pVB+h*pBB
             velocity = (velocity+cV/s*residual).coerceIn(0.0, 100.0)
-            accelBias = (accelBias+cB/s*residual).coerceIn(-2.0, 2.0)
+            // A single GPS discrepancy must not abruptly change the measured
+            // acceleration through the bias estimate. Still allow gradual bias
+            // learning during sustained motion (including larger offsets).
+            val maxBiasChange = .03*(fixTime-gpsTime!!).coerceIn(0.0, 2.0)
+            var biasGain = if (imuFresh(now)) cB/s else 0.0
+            if (abs(residual) > 1e-9) {
+                val nextBias = (accelBias+(biasGain*residual)
+                    .coerceIn(-maxBiasChange, maxBiasChange)).coerceIn(-2.0, 2.0)
+                biasGain = (nextBias-accelBias)/residual
+            }
+            accelBias += biasGain*residual
             pVV = (pVV-cV*cV/s).coerceAtLeast(1e-8)
             pVB -= cV*cB/s
-            pBB = (pBB-cB*cB/s).coerceAtLeast(1e-8)
+            // Joseph covariance update with the actual, limited bias gain.
+            pBB = (pBB-2*biasGain*cB+biasGain*biasGain*s).coerceAtLeast(1e-8)
         }
         val dt = fixTime-(gpsTime ?: fixTime)
         gpsAccel = if (dt in .2..3.0) ((speed-gpsSpeedMps!!)/dt).coerceIn(-8.0, 8.0) else 0.0

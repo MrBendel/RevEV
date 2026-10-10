@@ -150,6 +150,22 @@ int main() {
     tx.update(.01f, 6.7056f, 0.0f, .6f, 0.0f, 1);
     require(tx.gear() >= 1 && std::isfinite(tx.targetRpm()), "manual-to-drive transition must be valid");
 
+    // Low-speed clutch slip must not retain the gear selector's 350 ms demand
+    // history after braking, or delay a fresh launch behind that same filter.
+    TransmissionModel launch, coast;
+    launch.configure(5, carreraRatios, 3.44, 6500.0, 900.0, 0.31);
+    coast.configure(5, carreraRatios, 3.44, 6500.0, 900.0, 0.31);
+    for (int i=0; i<200; ++i) launch.update(.01f, 1.5f, 2.0f, .5f, 0, 1);
+    coast.update(.01f, 1.5f, -2.0f, .5f, 0, 1);
+    const float launchRpm = launch.targetRpm();
+    require(launchRpm > coast.targetRpm()+100, "launch demand must affect low-speed clutch slip");
+    launch.update(.01f, 1.5f, -2.0f, .5f, 0, 1);
+    require(std::abs(launch.targetRpm()-coast.targetRpm()) < .01f,
+        "braking must release launch slip immediately, independent of shift demand history");
+    launch.update(.01f, 1.5f, 2.0f, .5f, 0, 1);
+    require(std::abs(launch.targetRpm()-launchRpm) < .01f,
+        "relaunch must not wait for gear selection smoothing");
+
     std::printf("All TransmissionModel tests passed successfully!\n");
     return 0;
 }

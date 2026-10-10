@@ -106,8 +106,8 @@ void main() {
       expect(content, contains('rawX - gravity[0]'));
 
       // Low-pass smoothing and deadband
-      expect(content, contains('smoothedAccel'));
-      expect(content, contains('deadbandForward'));
+      // Filter response is exercised by the Kotlin behavioural tests.
+      expect(content, contains('forwardFilter.update('));
 
       // Velocity dead-reckoning fallback
       expect(
@@ -297,7 +297,7 @@ void main() {
         // Verify GPS drive container exists
         expect(
           find.textContaining(
-            'Automatic transmission driven by phone GPS speed',
+            'Engine follows phone motion',
           ),
           findsOneWidget,
         );

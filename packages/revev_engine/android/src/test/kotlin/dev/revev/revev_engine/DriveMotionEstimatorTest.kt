@@ -7,6 +7,65 @@ import kotlin.test.assertTrue
 import kotlin.math.abs
 
 class DriveMotionEstimatorTest {
+    @Test fun delayedHighGpsCannotUndoActiveBraking() {
+        val e = DriveMotionEstimator()
+        e.gps(0.0, 0.0, 4.0, 5.0)
+        e.step(0.0, -2.0)
+        for (i in 1..40) {
+            val t = i*.02
+            // A speed-bearing fix with an ordinary 1.2 m/s error, captured
+            // earlier in the braking manoeuvre and delivered 300 ms late.
+            if (i == 20) e.gps(t, t-.3, 5.0, 5.0, .5)
+            val before = e.speedMps
+            e.step(t, -2.0)
+            if (i > 20) assertTrue(e.speedMps <= before-.035,
+                "GPS must not counter braking at $t: $before -> ${e.speedMps}")
+        }
+        assertEquals(2.4, e.speedMps, .08)
+    }
+
+    @Test fun delayedLowGpsCannotHoldBackRelaunch() {
+        val e = DriveMotionEstimator()
+        e.gps(0.0, 0.0, 0.0, 5.0)
+        e.step(0.0, 2.0)
+        for (i in 1..40) {
+            val t = i*.02
+            if (i == 20) e.gps(t, t-.3, 0.0, 5.0, .5)
+            e.step(t, 2.0)
+        }
+        assertEquals(1.6, e.speedMps, .05)
+    }
+
+    @Test fun gpsOnlyCorrectsDriftGentlyWithFreshImu() {
+        val e=DriveMotionEstimator()
+        e.gps(0.0,0.0,10.0,5.0)
+        e.step(0.0,0.0)
+        e.gps(.2,.2,12.0,5.0,.2)
+        for(i in 11..40) {
+            val before=e.speedMps
+            e.step(i*.02,0.0)
+            val imuDelta = -e.accelBias*.02
+            assertTrue(e.speedMps-before-imuDelta <= .007001)
+        }
+    }
+
+    @Test fun largerBiasStillLearnsWithoutSuddenAccelerationChanges() {
+        val e=DriveMotionEstimator()
+        e.step(0.0,.45)
+        e.gps(0.0,0.0,10.0,5.0)
+        for(i in 1..3000) {
+            val t=i*.02
+            e.step(t,.45)
+            if(i%50==0) {
+                val before=e.accelBias
+                e.gps(t,t-.3,10.0,5.0,.2)
+                assertTrue(abs(e.accelBias-before) <= .030001)
+            }
+        }
+        assertEquals(.45,e.accelBias,.03)
+        assertEquals(10.0,e.speedMps,.08)
+    }
+
     @Test fun respondsBeforeNextGpsAndBrakesMonotonically() {
         val e = DriveMotionEstimator()
         e.gps(0.0, 0.0, 10.0, 5.0)
